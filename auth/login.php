@@ -2,9 +2,13 @@
 session_start();
 
 // Redirect if already logged in
-// if (isset($_SESSION['user'])) { header('Location: ../index.php'); exit; }
+if (isset($_SESSION['user_id'])) { header('Location: ../customer/profile.php'); exit; }
 
-$error = '';
+$error = $_SESSION['error'] ?? '';
+$success = $_SESSION['success'] ?? '';
+unset($_SESSION['error']);
+unset($_SESSION['success']);
+
 $tab = isset($_GET['tab']) && $_GET['tab'] === 'register' ? 'register' : 'login';
 ?>
 <!DOCTYPE html>
@@ -393,6 +397,9 @@ $tab = isset($_GET['tab']) && $_GET['tab'] === 'register' ? 'register' : 'login'
         <?php if ($error): ?>
             <div class="error-msg"><?= htmlspecialchars($error) ?></div>
         <?php endif; ?>
+        <?php if ($success): ?>
+            <div class="error-msg" style="background: #eafaf1; color: #27ae60; border-left-color: #27ae60;"><?= htmlspecialchars($success) ?></div>
+        <?php endif; ?>
 
         <!-- LOGIN PANEL -->
         <div class="panel <?= $tab === 'login' ? 'active' : '' ?>" id="panel-login">
@@ -459,10 +466,18 @@ $tab = isset($_GET['tab']) && $_GET['tab'] === 'register' ? 'register' : 'login'
                 <form method="POST" action="register_handler.php">
                     <input type="hidden" name="action" value="register"/>
 
-                    <div class="field">
-                        <div class="field-top"><label for="reg-name">Full Name</label></div>
-                        <div class="input-wrap">
-                            <input type="text" id="reg-name" name="name" placeholder="Alex Studio" required/>
+                    <div class="field" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div>
+                            <div class="field-top"><label for="reg-fname">First Name</label></div>
+                            <div class="input-wrap">
+                                <input type="text" id="reg-fname" name="firstname" placeholder="Alex" required/>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="field-top"><label for="reg-lname">Last Name</label></div>
+                            <div class="input-wrap">
+                                <input type="text" id="reg-lname" name="lastname" placeholder="Studio" required/>
+                            </div>
                         </div>
                     </div>
 
