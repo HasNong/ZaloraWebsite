@@ -1,30 +1,40 @@
 <?php
 session_start();
+require_once '../config/db.php';
 
-// Static cart items
-$cart_items = [
-    [
-        "name"    => "TAILORED WOOL COAT",
-        "variant" => "Charcoal Grey • Size 40",
-        "price"   => 450.00,
-        "qty"     => 1,
-        "img"     => "https://images.unsplash.com/photo-1544022613-e87ca75a784a?w=400&q=80",
-    ],
-    [
-        "name"    => "SILK DRAPE MIDI DRESS",
-        "variant" => "Ivory • Size 38",
-        "price"   => 280.00,
-        "qty"     => 1,
-        "img"     => "https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?w=400&q=80",
-    ],
-    [
-        "name"    => "POLISHED LEATHER BOOTS",
-        "variant" => "Black • Size 42",
-        "price"   => 320.00,
-        "qty"     => 1,
-        "img"     => "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&q=80",
-    ],
-];
+// Check if user is logged in
+if (!isset($_SESSION['user_id'])) {
+    header("Location: ../auth/login.php");
+    exit();
+}
+
+$cust_id = $_SESSION['user_id'];
+$cart_items = [];
+
+// Fetch cart items from DB
+$query = "SELECT ci.CItm_Id, ci.CItm_Quantity, pv.PVar_Size, pv.PVar_Color, p.Prod_Name, p.Prod_BasePrice, 
+          (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id LIMIT 1) as Prod_Image
+          FROM CART c
+          JOIN CART_ITEM ci ON c.Cart_Id = ci.Cart_Id
+          JOIN PRODUCT_VARIANT pv ON ci.PVar_Id = pv.PVar_Id
+          JOIN PRODUCT p ON pv.Prod_Id = p.Prod_Id
+          WHERE c.Cust_Id = ?";
+
+$stmt = $conn->prepare($query);
+$stmt->bind_param("i", $cust_id);
+$stmt->execute();
+$result = $stmt->get_result();
+
+while ($row = $result->fetch_assoc()) {
+    $cart_items[] = [
+        "id"      => $row['CItm_Id'],
+        "name"    => $row['Prod_Name'],
+        "variant" => ($row['PVar_Color'] ? $row['PVar_Color'] . " • " : "") . "Size " . $row['PVar_Size'],
+        "price"   => $row['Prod_BasePrice'],
+        "qty"     => $row['CItm_Quantity'],
+        "img"     => $row['Prod_Image'] ?? "https://via.placeholder.com/400x500?text=No+Image",
+    ];
+}
 
 $you_may_like = [
     [
@@ -63,7 +73,7 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>ZALORA — Shopping Bag</title>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
-    <link rel="stylesheet" href="assets/css/global.css"/>
+    <link rel="stylesheet" href="../assets/css/global.css"/>
     <link rel="stylesheet" href="../assets/css/cart.css"/>
 </head>
 <body>
@@ -72,23 +82,35 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
 <nav>
     <a href="../index.php" class="nav-logo">ZALORA</a>
     <ul class="nav-links">
-        <?php foreach ($nav_links as $link): ?>
-            <li><a href="#"><?= htmlspecialchars($link) ?></a></li>
-        <?php endforeach; ?>
+        <li><a href="products.php">WOMEN</a></li>
+        <li><a href="products.php">MEN</a></li>
+        <li><a href="products.php">KIDS</a></li>
+        <li><a href="products.php">LUXURY</a></li>
+        <li><a href="products.php">BEAUTY</a></li>
     </ul>
     <div class="nav-actions">
-        <a href="#" title="Search">
-            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <?php include 'nav_counts.php'; ?>
+        <div class="nav-search">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            <input type="text" placeholder="Search" />
+        </div>
+        <a href="profile.php" title="Account" style="color:var(--black);display:flex;align-items:center;text-decoration:none;gap:8px;">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <?php if (!empty($nav_user_name)): ?>
+                <span style="font-size:11px; font-weight:700; letter-spacing:0.05em;">Hi <?= htmlspecialchars($nav_user_name) ?>,</span>
+            <?php endif; ?>
         </a>
-        <a href="login.php" title="Account">
-            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <a href="wishlist.php" title="Wishlist" style="color:var(--black);display:flex;align-items:center;position:relative;">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            <?php if ($nav_wish_count > 0): ?>
+                <span class="cart-badge" style="top:-8px; right:-8px;"><?= $nav_wish_count ?></span>
+            <?php endif; ?>
         </a>
-        <a href="#" title="Wishlist">
-            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-        </a>
-        <a href="cart.php" title="Cart" style="color:var(--black);">
-            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
-            <span class="cart-badge"><?= $count ?></span>
+        <a href="cart.php" title="Cart" style="color:var(--black); position:relative; display:flex; align-items:center;">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            <?php if ($nav_cart_count > 0): ?>
+                <span class="cart-badge" style="top:-8px; right:-8px;"><?= $nav_cart_count ?></span>
+            <?php endif; ?>
         </a>
     </div>
 </nav>
@@ -102,8 +124,8 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
 
         <!-- CART ITEMS -->
         <div class="cart-items" id="cart-items">
-            <?php foreach ($cart_items as $index => $item): ?>
-            <div class="cart-item" id="item-<?= $index ?>">
+            <?php foreach ($cart_items as $item): ?>
+            <div class="cart-item" id="item-<?= $item['id'] ?>">
                 <img class="item-img" src="<?= htmlspecialchars($item['img']) ?>" alt="<?= htmlspecialchars($item['name']) ?>"/>
 
                 <div class="item-details">
@@ -111,18 +133,18 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
                     <p class="item-variant"><?= htmlspecialchars($item['variant']) ?></p>
 
                     <div class="qty-stepper">
-                        <button class="qty-btn" onclick="changeQty(<?= $index ?>, -1)">−</button>
-                        <input class="qty-val" id="qty-<?= $index ?>" type="number" value="<?= $item['qty'] ?>" min="1" max="99" readonly/>
-                        <button class="qty-btn" onclick="changeQty(<?= $index ?>, 1)">+</button>
+                        <button class="qty-btn" onclick="changeQty(<?= $item['id'] ?>, -1)">−</button>
+                        <input class="qty-val" id="qty-<?= $item['id'] ?>" type="number" value="<?= $item['qty'] ?>" min="1" max="99" readonly/>
+                        <button class="qty-btn" onclick="changeQty(<?= $item['id'] ?>, 1)">+</button>
                     </div>
 
                     <div class="item-actions">
                         <button class="item-action-btn btn-fav">Move to Favorites</button>
-                        <button class="item-action-btn btn-remove" onclick="removeItem(<?= $index ?>)">Remove</button>
+                        <button class="item-action-btn btn-remove" onclick="removeItem(<?= $item['id'] ?>)">Remove</button>
                     </div>
                 </div>
 
-                <p class="item-price" id="price-<?= $index ?>">$<?= number_format($item['price'], 2) ?></p>
+                <p class="item-price" id="price-<?= $item['id'] ?>" data-unit-price="<?= $item['price'] ?>">$<?= number_format($item['price'] * $item['qty'], 2) ?></p>
             </div>
             <?php endforeach; ?>
         </div>
@@ -151,7 +173,7 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
                 <span class="value" id="summary-total">$<?= number_format($total, 2) ?></span>
             </div>
 
-            <button class="btn-checkout">Proceed to Checkout</button>
+            <a href="checkout.php" class="btn-checkout" style="text-decoration:none; display:block; text-align:center;">Proceed to Checkout</a>
 
             <div class="promo-row">
                 <input class="promo-input" type="text" placeholder="Promo Code"/>
@@ -207,53 +229,93 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
 </footer>
 
 <script>
-    // Item prices (for JS recalculation)
-    const prices = <?= json_encode(array_column($cart_items, 'price')) ?>;
-    const qtys   = <?= json_encode(array_column($cart_items, 'qty')) ?>;
     const TAX_RATE = 0.08;
 
-    function changeQty(index, delta) {
-        const input = document.getElementById(`qty-${index}`);
+    async function changeQty(citmId, delta) {
+        const input = document.getElementById(`qty-${citmId}`);
         let val = parseInt(input.value) + delta;
         if (val < 1) val = 1;
         if (val > 99) val = 99;
-        input.value = val;
-        qtys[index] = val;
 
-        // Update individual price display
-        const linePrice = prices[index] * val;
-        document.getElementById(`price-${index}`).textContent = '$' + linePrice.toFixed(2);
+        // Send update to DB
+        const formData = new FormData();
+        formData.append('action', 'update_qty');
+        formData.append('citm_id', citmId);
+        formData.append('quantity', val);
 
-        recalcSummary();
+        try {
+            const response = await fetch('update_cart_api.php', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                input.value = val;
+                // Update line price
+                const priceEl = document.getElementById(`price-${citmId}`);
+                const unitPrice = parseFloat(priceEl.dataset.unitPrice);
+                priceEl.textContent = '$' + (unitPrice * val).toFixed(2);
+                recalcSummary();
+            }
+        } catch (error) {
+            console.error('Error updating quantity:', error);
+        }
     }
 
-    function removeItem(index) {
-        const el = document.getElementById(`item-${index}`);
-        el.style.transition = 'opacity 0.3s, transform 0.3s';
-        el.style.opacity = '0';
-        el.style.transform = 'translateX(-20px)';
-        setTimeout(() => {
-            el.remove();
-            prices[index] = 0;
-            qtys[index]   = 0;
-            recalcSummary();
-            updateBagCount();
-        }, 300);
+    async function removeItem(citmId) {
+        if (!confirm('Remove this item from your bag?')) return;
+
+        const formData = new FormData();
+        formData.append('action', 'remove');
+        formData.append('citm_id', citmId);
+
+        try {
+            const response = await fetch('update_cart_api.php', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                const el = document.getElementById(`item-${citmId}`);
+                el.style.transition = 'opacity 0.3s, transform 0.3s';
+                el.style.opacity = '0';
+                el.style.transform = 'translateX(-20px)';
+                setTimeout(() => {
+                    el.remove();
+                    recalcSummary();
+                    updateBagCount();
+                }, 300);
+            }
+        } catch (error) {
+            console.error('Error removing item:', error);
+        }
     }
 
     function recalcSummary() {
-        const subtotal = prices.reduce((sum, p, i) => sum + p * (qtys[i] || 0), 0);
-        const tax      = subtotal * TAX_RATE;
-        const total    = subtotal + tax;
+        let subtotal = 0;
+        document.querySelectorAll('.item-price').forEach(el => {
+            const price = parseFloat(el.textContent.replace('$', ''));
+            subtotal += price;
+        });
+
+        const tax = subtotal * TAX_RATE;
+        const total = subtotal + tax;
+
         document.getElementById('summary-subtotal').textContent = '$' + subtotal.toFixed(2);
-        document.getElementById('summary-tax').textContent      = '$' + tax.toFixed(2);
-        document.getElementById('summary-total').textContent    = '$' + total.toFixed(2);
+        document.getElementById('summary-tax').textContent = '$' + tax.toFixed(2);
+        document.getElementById('summary-total').textContent = '$' + total.toFixed(2);
     }
 
     function updateBagCount() {
         const remaining = document.querySelectorAll('.cart-item').length;
         document.querySelector('.page-title').textContent = `Shopping Bag (${remaining})`;
         document.querySelector('.cart-badge').textContent = remaining;
+        
+        if (remaining === 0) {
+            document.getElementById('cart-items').innerHTML = '<p style="padding: 2rem 0; color: var(--text-muted); font-style: italic;">Your bag is empty.</p>';
+        }
     }
 </script>
 

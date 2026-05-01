@@ -1,29 +1,74 @@
 <?php
 session_start();
+require_once '../config/db.php';
+
+$prod_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+
+if ($prod_id <= 0) {
+    header("Location: products.php");
+    exit();
+}
+
+// Fetch Product Details
+$query = "SELECT p.*, b.Brand_Name, c.Ctgry_Name 
+          FROM PRODUCT p 
+          JOIN BRAND b ON p.Brand_Id = b.Brand_Id 
+          JOIN CATEGORY c ON p.Ctgry_Id = c.Ctgry_Id 
+          WHERE p.Prod_Id = ? AND p.Prod_IsActive = 1";
+
+$stmt = $conn->prepare($query);
+$stmt->bind_param("i", $prod_id);
+$stmt->execute();
+$product_res = $stmt->get_result();
+
+if ($product_res->num_rows === 0) {
+    die("Product not found.");
+}
+
+$product_data = $product_res->fetch_assoc();
+
+// Fetch Variants
+$variant_query = "SELECT * FROM PRODUCT_VARIANT WHERE Prod_Id = ?";
+$v_stmt = $conn->prepare($variant_query);
+$v_stmt->bind_param("i", $prod_id);
+$v_stmt->execute();
+$variants_res = $v_stmt->get_result();
+$variants = [];
+$sizes = [];
+$colors = [];
+
+while ($v = $variants_res->fetch_assoc()) {
+    $variants[] = $v;
+    if ($v['PVar_Size'] && !in_array($v['PVar_Size'], $sizes)) $sizes[] = $v['PVar_Size'];
+    if ($v['PVar_Color'] && !in_array($v['PVar_Color'], $colors)) $colors[] = $v['PVar_Color'];
+}
+
+// Fetch Images
+$img_query = "SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = ? ORDER BY PImg_IsPrimary DESC";
+$i_stmt = $conn->prepare($img_query);
+$i_stmt->bind_param("i", $prod_id);
+$i_stmt->execute();
+$img_res = $i_stmt->get_result();
+$images = [];
+while ($img = $img_res->fetch_assoc()) {
+    $images[] = $img['PImg_ImgUrl'];
+}
+if (empty($images)) $images[] = "https://via.placeholder.com/800x1000?text=No+Image";
 
 $product = [
-    "collection"  => "ARCHIVAL COLLECTION",
-    "name"        => "WOOL STRUCTURED BLAZER",
-    "price"       => 289.00,
-    "description" => "A cornerstone of the Archival Collection. This blazer features a structured silhouette crafted from ethically sourced virgin wool. Designed for versatility, it transitions seamlessly from formal environments to elevated casual wear.",
-    "colors" => [
-        ["name" => "Midnight Black", "hex" => "#1a1a1a"],
-        ["name" => "Slate Grey",     "hex" => "#9e9e9e"],
-        ["name" => "Ash",            "hex" => "#d0d0d0"],
-    ],
-    "sizes" => ["XS", "S", "M", "L"],
-    "images" => [
-        "https://images.unsplash.com/photo-1507679799987-c73779587ccf?w=800&q=80",
-        "https://images.unsplash.com/photo-1593030761757-71fae45fa0e7?w=800&q=80",
-        "https://images.unsplash.com/photo-1548718135-8e4cdc28d8a3?w=800&q=80",
-    ],
+    "collection"  => strtoupper($product_data['Ctgry_Name']) . " COLLECTION",
+    "brand"       => $product_data['Brand_Name'],
+    "name"        => $product_data['Prod_Name'],
+    "price"       => $product_data['Prod_BasePrice'],
+    "description" => $product_data['Prod_Desc'],
+    "colors"      => $colors,
+    "sizes"       => $sizes,
+    "images"      => $images,
 ];
 
 $complete_look = [
     ["brand" => "ARCHIVE",      "name" => "Wide-Leg Wool Trouser",  "price" => 145.00, "img" => "https://images.unsplash.com/photo-1473966968600-fa801b869a1a?w=400&q=80"],
     ["brand" => "ZALORA LUXURY","name" => "Pointed Leather Boot",   "price" => 210.00, "img" => "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&q=80"],
-    ["brand" => "THE STUDIO",   "name" => "Structured Totem Bag",   "price" => 180.00, "img" => "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=400&q=80"],
-    ["brand" => "FINE JEWELRY", "name" => "24K Sculpted Hoops",     "price" => 85.00,  "img" => "https://images.unsplash.com/photo-1599643477877-530eb83abc8e?w=400&q=80"],
 ];
 
 $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
@@ -35,24 +80,44 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>ZALORA — <?= htmlspecialchars($product['name']) ?></title>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
-    <link rel="stylesheet" href="assets/css/global.css"/>
+    <link rel="stylesheet" href="../assets/css/global.css"/>
     <link rel="stylesheet" href="../assets/css/product.css"/>
 </head>
 <body>
 
-<!-- NAV -->
-<nav>
-    <a href="index.php" class="nav-logo">ZALORA</a>
+<!-- NAV --><nav>
+    <a href="../index.php" class="nav-logo">ZALORA</a>
     <ul class="nav-links">
-        <?php foreach ($nav_links as $i => $link): ?>
-            <li><a href="#" class="<?= $i === 0 ? 'active' : '' ?>"><?= htmlspecialchars($link) ?></a></li>
-        <?php endforeach; ?>
+        <li><a href="products.php">WOMEN</a></li>
+        <li><a href="products.php">MEN</a></li>
+        <li><a href="products.php">KIDS</a></li>
+        <li><a href="products.php">LUXURY</a></li>
+        <li><a href="products.php">BEAUTY</a></li>
     </ul>
     <div class="nav-actions">
-        <a href="#" title="Search"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></a>
-        <a href="auth/login.php" title="Account"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></a>
-        <a href="#" title="Wishlist"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></a>
-        <a href="cart.php" title="Cart"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg><span class="cart-badge">3</span></a>
+        <?php include 'nav_counts.php'; ?>
+        <div class="nav-search">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            <input type="text" placeholder="Search" />
+        </div>
+        <a href="profile.php" title="Account" style="color:var(--black);display:flex;align-items:center;text-decoration:none;gap:8px;">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <?php if (!empty($nav_user_name)): ?>
+                <span style="font-size:11px; font-weight:700; letter-spacing:0.05em;">Hi <?= htmlspecialchars($nav_user_name) ?>,</span>
+            <?php endif; ?>
+        </a>
+        <a href="wishlist.php" title="Wishlist" style="color:var(--black);display:flex;align-items:center;position:relative;">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            <?php if ($nav_wish_count > 0): ?>
+                <span class="cart-badge" style="top:-8px; right:-8px;"><?= $nav_wish_count ?></span>
+            <?php endif; ?>
+        </a>
+        <a href="cart.php" title="Cart" style="color:var(--black);display:flex;align-items:center;position:relative;">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            <?php if ($nav_cart_count > 0): ?>
+                <span class="cart-badge" style="top:-8px; right:-8px;"><?= $nav_cart_count ?></span>
+            <?php endif; ?>
+        </a>
     </div>
 </nav>
 
@@ -72,34 +137,46 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
         <h1 class="product-name"><?= htmlspecialchars($product['name']) ?></h1>
         <p class="product-price">$<?= number_format($product['price'], 2) ?></p>
 
-        <!-- Color -->
-        <p class="option-label">Color: <span class="color-name" id="color-label"><?= htmlspecialchars($product['colors'][0]['name']) ?></span></p>
-        <div class="color-swatches">
-            <?php foreach ($product['colors'] as $i => $color): ?>
-            <button
-                class="color-swatch <?= $i === 0 ? 'active' : '' ?>"
-                style="background:<?= htmlspecialchars($color['hex']) ?>;<?= $color['hex']==='#d0d0d0'?'border:1px solid #ccc;':'' ?>"
-                title="<?= htmlspecialchars($color['name']) ?>"
-                data-name="<?= htmlspecialchars($color['name']) ?>"
-                onclick="selectColor(this)"
-            ></button>
-            <?php endforeach; ?>
-        </div>
+        <!-- Form for Add to Bag -->
+        <form action="add_to_cart.php" method="POST">
+            <!-- Hidden inputs for product info -->
+            <input type="hidden" name="pvar_id" id="selected-pvar-id" value="<?= !empty($variants) ? $variants[0]['PVar_Id'] : '' ?>">
+            <input type="hidden" name="quantity" value="1">
 
-        <!-- Size -->
-        <div class="size-header">
-            <p class="option-label" style="margin-bottom:0;">Select Size</p>
-            <span class="size-guide">Size Guide</span>
-        </div>
-        <div class="size-grid">
-            <?php foreach ($product['sizes'] as $i => $size): ?>
-            <button class="size-btn <?= $i === 1 ? 'active' : '' ?>" onclick="selectSize(this)"><?= htmlspecialchars($size) ?></button>
-            <?php endforeach; ?>
-        </div>
+            <!-- Color -->
+            <?php if (!empty($product['colors'])): ?>
+            <p class="option-label">Color: <span class="color-name" id="color-label"><?= htmlspecialchars($product['colors'][0]) ?></span></p>
+            <div class="color-swatches">
+                <?php foreach ($product['colors'] as $i => $color): ?>
+                <button
+                    type="button"
+                    class="color-swatch <?= $i === 0 ? 'active' : '' ?>"
+                    style="background:<?= htmlspecialchars($color) ?>;"
+                    title="<?= htmlspecialchars($color) ?>"
+                    data-name="<?= htmlspecialchars($color) ?>"
+                    onclick="selectColor(this)"
+                ></button>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
 
-        <!-- CTAs -->
-        <button class="btn-add" onclick="addToBag(this)">Add to Bag</button>
-        <button class="btn-wish" onclick="toggleWish(this)">♡ <span>Add to Wishlist</span></button>
+            <!-- Size -->
+            <?php if (!empty($product['sizes'])): ?>
+            <div class="size-header">
+                <p class="option-label" style="margin-bottom:0;">Select Size</p>
+                <span class="size-guide">Size Guide</span>
+            </div>
+            <div class="size-grid">
+                <?php foreach ($product['sizes'] as $i => $size): ?>
+                <button type="button" class="size-btn <?= $i === 0 ? 'active' : '' ?>" data-size="<?= htmlspecialchars($size) ?>" onclick="selectSize(this)"><?= htmlspecialchars($size) ?></button>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+
+            <!-- CTAs -->
+            <button type="submit" class="btn-add">Add to Bag</button>
+            <button type="button" class="btn-wish" onclick="toggleWish(this)">♡ <span>Add to Wishlist</span></button>
+        </form>
 
         <!-- Accordion -->
         <div class="accordion">
@@ -174,30 +251,60 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
 </footer>
 
 <script>
+    const variants = <?= json_encode($variants) ?>;
+    let selectedColor = "<?= !empty($product['colors']) ? $product['colors'][0] : '' ?>";
+    let selectedSize = "<?= !empty($product['sizes']) ? $product['sizes'][0] : '' ?>";
+
+    function updateSelectedVariant() {
+        const variant = variants.find(v => 
+            (v.PVar_Color === selectedColor || !v.PVar_Color) && 
+            (v.PVar_Size === selectedSize || !v.PVar_Size)
+        );
+        if (variant) {
+            document.getElementById('selected-pvar-id').value = variant.PVar_Id;
+        }
+    }
+
     function selectColor(btn) {
         document.querySelectorAll('.color-swatch').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        document.getElementById('color-label').textContent = btn.dataset.name;
+        selectedColor = btn.dataset.name;
+        document.getElementById('color-label').textContent = selectedColor;
+        updateSelectedVariant();
     }
 
     function selectSize(btn) {
         document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+        selectedSize = btn.dataset.size;
+        updateSelectedVariant();
     }
 
-    function toggleWish(btn) {
-        const liked = btn.classList.toggle('liked');
-        btn.querySelector('span').textContent = liked ? 'Added to Wishlist' : 'Add to Wishlist';
-        btn.childNodes[0].textContent = liked ? '♥ ' : '♡ ';
-    }
+    async function toggleWish(btn) {
+        const pvarId = document.getElementById('selected-pvar-id').value;
+        if (!pvarId) return;
 
-    function addToBag(btn) {
-        const orig = btn.textContent;
-        btn.textContent = '✓ Added to Bag';
-        btn.style.background = '#27ae60';
-        setTimeout(() => { btn.textContent = orig; btn.style.background = ''; }, 2000);
-        const badge = document.querySelector('.cart-badge');
-        badge.textContent = parseInt(badge.textContent) + 1;
+        const formData = new FormData();
+        formData.append('pvar_id', pvarId);
+
+        try {
+            const response = await fetch('toggle_wishlist_api.php', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                const liked = (result.action === 'added');
+                btn.classList.toggle('liked', liked);
+                btn.querySelector('span').textContent = liked ? 'Added to Wishlist' : 'Add to Wishlist';
+                btn.childNodes[0].textContent = liked ? '♥ ' : '♡ ';
+            } else if (result.message === 'Unauthorized') {
+                window.location.href = '../auth/login.php';
+            }
+        } catch (error) {
+            console.error('Error toggling wishlist:', error);
+        }
     }
 
     function toggleAccordion(header) {

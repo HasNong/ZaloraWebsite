@@ -80,25 +80,35 @@ $sidebar_prefs = [
 <nav>
     <a href="../index.php" class="nav-logo">ZALORA</a>
     <ul class="nav-links">
-        <?php foreach ($nav_links as $link): ?>
-            <li><a href="#"><?= htmlspecialchars($link) ?></a></li>
-        <?php endforeach; ?>
+        <li><a href="products.php">WOMEN</a></li>
+        <li><a href="products.php">MEN</a></li>
+        <li><a href="products.php">KIDS</a></li>
+        <li><a href="products.php">LUXURY</a></li>
+        <li><a href="products.php">BEAUTY</a></li>
     </ul>
     <div class="nav-actions">
-        <a href="#" title="Search">
-            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <?php include 'nav_counts.php'; ?>
+        <div class="nav-search">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            <input type="text" placeholder="Search" />
+        </div>
+        <a href="profile.php" title="Account" style="color:var(--black);display:flex;align-items:center;text-decoration:none;gap:8px;">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <?php if (!empty($nav_user_name)): ?>
+                <span style="font-size:11px; font-weight:700; letter-spacing:0.05em;">Hi <?= htmlspecialchars($nav_user_name) ?>,</span>
+            <?php endif; ?>
         </a>
-        <a href="#" title="Wishlist">
-            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        <a href="wishlist.php" title="Wishlist" style="color:var(--black);display:flex;align-items:center;position:relative;">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            <?php if ($nav_wish_count > 0): ?>
+                <span class="cart-badge" style="top:-8px; right:-8px;"><?= $nav_wish_count ?></span>
+            <?php endif; ?>
         </a>
-        <a href="cart.php" title="Cart">
-            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
-            <span class="cart-badge">3</span>
-        </a>
-        <div class="nav-divider"></div>
-        <a href="profile.php" class="nav-profile">
-            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            MY PROFILE
+        <a href="cart.php" title="Cart" style="color:var(--black); position:relative; display:flex; align-items:center;">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            <?php if ($nav_cart_count > 0): ?>
+                <span class="cart-badge" style="top:-8px; right:-8px;"><?= $nav_cart_count ?></span>
+            <?php endif; ?>
         </a>
     </div>
 </nav>
