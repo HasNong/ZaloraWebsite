@@ -36,4 +36,7 @@ if (isset($_SESSION['user_id'])) {
     $nav_wish_count = 0;
     $nav_user_name = '';
 }
+
+// Global Nav Links
+$nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
 ?>

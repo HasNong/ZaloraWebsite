@@ -52,7 +52,7 @@ $categories = [
     ],
 ];
 
-$nav_links = ["WOMEN", "MEN", "KIDS", "BEAUTY", "LUXURY"];
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -69,6 +69,7 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "BEAUTY", "LUXURY"];
 
 <!-- ── NAVIGATION ── -->
 <nav>
+    <?php include 'customer/nav_counts.php'; ?>
     <a href="index.php" class="nav-logo">ZALORA</a>
     <ul class="nav-links">
         <?php foreach ($nav_links as $link): ?>
@@ -76,11 +77,10 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "BEAUTY", "LUXURY"];
         <?php endforeach; ?>
     </ul>
     <div class="nav-actions">
-        <?php include 'customer/nav_counts.php'; ?>
-        <div class="nav-search">
+        <form action="customer/products.php" method="GET" class="nav-search">
             <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-            <input type="text" placeholder="Search" />
-        </div>
+            <input type="text" name="q" placeholder="Search" />
+        </form>
         <a href="<?= isset($_SESSION['user_id']) ? 'customer/profile.php' : 'auth/login.php' ?>" title="Account" style="color:var(--black);display:flex;align-items:center;text-decoration:none;gap:8px;">
             <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             <?php if (!empty($nav_user_name)): ?>
@@ -113,8 +113,8 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "BEAUTY", "LUXURY"];
         <p class="hero-label">NEW COLLECTION 2024</p>
         <h1 class="hero-title">The Architectural<br>Minimalist</h1>
         <div class="hero-actions">
-            <button class="btn-primary">Shop Women</button>
-            <button class="btn-outline">Discover Editorial</button>
+            <a href="customer/products.php" class="btn-primary" style="text-decoration:none; display:inline-block;">Shop Collection</a>
+            <a href="customer/products.php" class="btn-outline" style="text-decoration:none; display:inline-block;">Discover All</a>
         </div>
     </div>
 </section>
@@ -122,13 +122,13 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "BEAUTY", "LUXURY"];
 <!-- ── CATEGORY TILES ── -->
 <section class="categories">
     <?php foreach ($categories as $cat): ?>
-    <div class="category-tile">
+    <a href="customer/products.php" class="category-tile" style="text-decoration:none;">
         <img src="<?= htmlspecialchars($cat['img']) ?>" alt="<?= htmlspecialchars($cat['name']) ?>" loading="lazy" />
         <div class="category-label">
             <h3><?= htmlspecialchars($cat['name']) ?></h3>
             <p><?= htmlspecialchars($cat['sub']) ?></p>
         </div>
-    </div>
+    </a>
     <?php endforeach; ?>
 </section>
 
@@ -139,7 +139,7 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "BEAUTY", "LUXURY"];
             <p class="section-label">Curated for You</p>
             <h2 class="section-title">Shop the Editorial</h2>
         </div>
-        <a href="#" class="view-all">View All Looks</a>
+        <a href="customer/products.php" class="view-all">View All Looks</a>
     </div>
 
     <div class="editorial-grid">
@@ -153,7 +153,7 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "BEAUTY", "LUXURY"];
             <h3 class="look-title"><?= htmlspecialchars($look['title']) ?></h3>
             <p class="look-pieces"><?= htmlspecialchars($look['subtitle']) ?></p>
             <p class="look-price"><?= htmlspecialchars($look['price']) ?></p>
-            <button class="btn-shop">Shop Full Look</button>
+            <a href="customer/products.php" class="btn-shop" style="text-decoration:none; display:block; text-align:center;">Shop Full Look</a>
         </div>
         <?php endforeach; ?>
     </div>

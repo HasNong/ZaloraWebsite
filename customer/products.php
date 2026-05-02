@@ -2,14 +2,51 @@
 session_start();
 require_once '../config/db.php';
 
-// Fetch real products from database
-$query = "SELECT p.Prod_Id, p.Prod_Name, p.Prod_BasePrice, b.Brand_Name, 
+// Filtering Parameters
+$category_name = isset($_GET['category']) ? $_GET['category'] : '';
+$max_price = isset($_GET['max_price']) ? floatval($_GET['max_price']) : 1000;
+$selected_size = isset($_GET['size']) ? $_GET['size'] : '';
+$selected_color = isset($_GET['color']) ? $_GET['color'] : '';
+$search_q = isset($_GET['q']) ? trim($_GET['q']) : '';
+
+$query = "SELECT DISTINCT p.Prod_Id, p.Prod_Name, p.Prod_BasePrice, b.Brand_Name, 
           (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id AND PImg_IsPrimary = 1 LIMIT 1) as Primary_Image
           FROM PRODUCT p
           JOIN BRAND b ON p.Brand_Id = b.Brand_Id
-          WHERE p.Prod_IsActive = 1";
+          LEFT JOIN CATEGORY c ON p.Ctgry_Id = c.Ctgry_Id
+          LEFT JOIN PRODUCT_VARIANT pv ON p.Prod_Id = pv.Prod_Id
+          WHERE p.Prod_IsActive = 1 AND p.Prod_BasePrice <= ?";
 
-$result = $conn->query($query);
+$params = [$max_price];
+$types = "d";
+
+if (!empty($category_name)) {
+    $query .= " AND c.Ctgry_Name = ?";
+    $params[] = $category_name;
+    $types .= "s";
+}
+if (!empty($selected_size)) {
+    $query .= " AND pv.PVar_Size = ?";
+    $params[] = $selected_size;
+    $types .= "s";
+}
+if (!empty($selected_color)) {
+    $query .= " AND pv.PVar_Color = ?";
+    $params[] = $selected_color;
+    $types .= "s";
+}
+if (!empty($search_q)) {
+    $query .= " AND (p.Prod_Name LIKE ? OR p.Prod_Desc LIKE ?)";
+    $like_q = "%$search_q%";
+    $params[] = $like_q;
+    $params[] = $like_q;
+    $types .= "ss";
+}
+
+$stmt = $conn->prepare($query);
+$stmt->bind_param($types, ...$params);
+$stmt->execute();
+$result = $stmt->get_result();
 $products = [];
 
 if ($result) {
@@ -26,12 +63,50 @@ if ($result) {
     }
 }
 
-$categories = [
-    ["label" => "All Clothing", "count" => 1240, "active" => true],
-    ["label" => "Dresses",      "count" => 342,  "active" => false],
-    ["label" => "Tops",         "count" => 215,  "active" => false],
-    ["label" => "Outerwear",    "count" => 128,  "active" => false],
-];
+// Fetch Filter Options from Database
+$db_sizes = [];
+$s_res = $conn->query("SELECT DISTINCT PVar_Size FROM PRODUCT_VARIANT ORDER BY PVar_Size");
+while($srow = $s_res->fetch_assoc()) $db_sizes[] = $srow['PVar_Size'];
+
+$db_colors = [];
+$c_res = $conn->query("SELECT DISTINCT PVar_Color, ANY_VALUE(PVar_Sku) FROM PRODUCT_VARIANT GROUP BY PVar_Color ORDER BY PVar_Color");
+while($crow = $c_res->fetch_assoc()) {
+    // Basic color mapping for dummy UI, usually you'd have a color table
+    $hex = "#333"; 
+    if(stripos($crow['PVar_Color'], 'white') !== false) $hex = "#fff";
+    if(stripos($crow['PVar_Color'], 'black') !== false) $hex = "#000";
+    if(stripos($crow['PVar_Color'], 'red') !== false) $hex = "#e74c3c";
+    
+    $db_colors[] = ["name" => $crow['PVar_Color'], "hex" => $hex];
+}
+
+// Fetch Total Product Count (Global)
+$total_res = $conn->query("SELECT COUNT(*) as total FROM PRODUCT WHERE Prod_IsActive = 1");
+$total_count = $total_res->fetch_assoc()['total'] ?? 0;
+
+// Fetch Categories for Sidebar with accurate counts
+$cat_query = "SELECT c.Ctgry_Name, COUNT(p.Prod_Id) as prod_count 
+              FROM CATEGORY c 
+              LEFT JOIN PRODUCT p ON c.Ctgry_Id = p.Ctgry_Id AND p.Prod_IsActive = 1
+              WHERE c.Ctgry_IsActive = 1 
+              GROUP BY c.Ctgry_Id, c.Ctgry_Name
+              ORDER BY c.Ctgry_Name ASC";
+$cat_res = $conn->query($cat_query);
+
+$sidebar_categories = [];
+$sidebar_categories[] = ["label" => "All Products", "count" => $total_count, "active" => empty($category_name)];
+
+if ($cat_res) {
+    while ($crow = $cat_res->fetch_assoc()) {
+        $sidebar_categories[] = [
+            "label" => $crow['Ctgry_Name'],
+            "count" => $crow['prod_count'],
+            "active" => ($category_name === $crow['Ctgry_Name'])
+        ];
+    }
+}
+
+
 
 $sizes  = ["XS", "S", "M", "L", "XL"];
 $colors = [
@@ -57,20 +132,18 @@ $colors = [
 
 <!-- ── NAV ── -->
 <nav>
+    <?php include 'nav_counts.php'; ?>
     <a href="../index.php" class="nav-logo">ZALORA</a>
     <ul class="nav-links">
-        <li><a href="products.php">WOMEN</a></li>
-        <li><a href="products.php">MEN</a></li>
-        <li><a href="products.php">KIDS</a></li>
-        <li><a href="products.php">LUXURY</a></li>
-        <li><a href="products.php">BEAUTY</a></li>
+        <?php foreach ($nav_links as $link): ?>
+            <li><a href="products.php?category=<?= urlencode($link) ?>"><?= htmlspecialchars($link) ?></a></li>
+        <?php endforeach; ?>
     </ul>
     <div class="nav-actions">
-        <?php include 'nav_counts.php'; ?>
-        <div class="nav-search">
+        <form action="products.php" method="GET" class="nav-search">
             <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-            <input type="text" placeholder="Search" />
-        </div>
+            <input type="text" name="q" placeholder="Search" />
+        </form>
         <a href="profile.php" title="Account" style="color:var(--black);display:flex;align-items:center;text-decoration:none;gap:8px;">
             <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             <?php if (!empty($nav_user_name)): ?>
@@ -94,9 +167,13 @@ $colors = [
 
 <!-- ── PAGE HEADER ── -->
 <div class="page-header">
-    <div class="page-header-left">
-        <h1>New Arrivals</h1>
-        <p>Curated selection of the latest international fashion trends.</p>
+    <div class="shop-header">
+        <?php if (!empty($search_q)): ?>
+            <h1 class="shop-title">Results for "<?= htmlspecialchars($search_q) ?>"</h1>
+        <?php else: ?>
+            <h1 class="shop-title"><?= !empty($category_name) ? 'Shop ' . htmlspecialchars($category_name) : 'All Products' ?></h1>
+        <?php endif; ?>
+        <p class="shop-subtitle">Showing <?= count($products) ?> items</p>
     </div>
     <div class="sort-wrap">
         <label for="sort">Sort By:</label>
@@ -114,60 +191,91 @@ $colors = [
 
     <!-- SIDEBAR -->
     <aside class="sidebar">
+        <form action="products.php" method="GET" id="filter-form">
+            <!-- Hidden Category to preserve state -->
+            <input type="hidden" name="category" value="<?= htmlspecialchars($category_name) ?>"/>
 
-        <!-- Category -->
-        <div class="filter-section">
-            <p class="filter-title">Category</p>
-            <ul class="cat-list">
-                <?php foreach ($categories as $cat): ?>
-                <li>
-                    <a href="#" class="<?= $cat['active'] ? 'active' : '' ?>">
-                        <span><?= htmlspecialchars($cat['label']) ?></span>
-                        <span class="cat-count">(<?= number_format($cat['count']) ?>)</span>
-                    </a>
-                </li>
-                <?php endforeach; ?>
-            </ul>
-        </div>
-
-        <!-- Size -->
-        <div class="filter-section">
-            <p class="filter-title">Size</p>
-            <div class="size-grid">
-                <?php foreach ($sizes as $i => $size): ?>
-                <button class="size-btn <?= $i === 1 ? 'active' : '' ?>" onclick="toggleSize(this)">
-                    <?= htmlspecialchars($size) ?>
-                </button>
-                <?php endforeach; ?>
+            <!-- Category -->
+            <div class="filter-section">
+                <p class="filter-title">Category</p>
+                <ul class="cat-list">
+                    <?php foreach ($sidebar_categories as $cat): ?>
+                    <li>
+                        <a href="products.php<?= ($cat['label'] === 'All Products') ? '' : '?category=' . urlencode($cat['label']) ?>" 
+                           class="<?= $cat['active'] ? 'active' : '' ?>">
+                            <span><?= htmlspecialchars($cat['label']) ?></span>
+                            <span class="cat-count">(<?= number_format($cat['count']) ?>)</span>
+                        </a>
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
             </div>
-        </div>
 
-        <!-- Color -->
-        <div class="filter-section">
-            <p class="filter-title">Color</p>
-            <div class="color-swatches">
-                <?php foreach ($colors as $color): ?>
-                <button
-                    class="color-swatch"
-                    style="background:<?= htmlspecialchars($color['hex']) ?>; <?= $color['hex'] === '#f5f5f0' ? 'border:2px solid #ddd;' : '' ?>"
-                    title="<?= htmlspecialchars($color['name']) ?>"
-                    onclick="toggleColor(this)"
-                ></button>
-                <?php endforeach; ?>
+            <!-- Size -->
+            <div class="filter-section">
+                <p class="filter-title">Size</p>
+                <div class="size-grid">
+                    <?php foreach ($db_sizes as $size): ?>
+                    <button type="button" 
+                            class="size-btn <?= $selected_size === $size ? 'active' : '' ?>" 
+                            onclick="setFilter('size', '<?= htmlspecialchars($size) ?>')">
+                        <?= htmlspecialchars($size) ?>
+                    </button>
+                    <?php endforeach; ?>
+                    <input type="hidden" name="size" id="size-input" value="<?= htmlspecialchars($selected_size) ?>"/>
+                </div>
             </div>
-        </div>
 
-        <!-- Price Range -->
-        <div class="filter-section">
-            <p class="filter-title">Price Range</p>
-            <input type="range" min="0" max="500" value="150" id="price-range" oninput="updatePrice(this.value)"/>
-            <div class="price-labels">
-                <span>$0</span>
-                <span id="price-max">$500+</span>
+            <!-- Color -->
+            <div class="filter-section">
+                <p class="filter-title">Color</p>
+                <div class="color-swatches">
+                    <?php foreach ($db_colors as $color): ?>
+                    <button
+                        type="button"
+                        class="color-swatch <?= $selected_color === $color['name'] ? 'active' : '' ?>"
+                        style="background:<?= htmlspecialchars($color['hex']) ?>; border: <?= $selected_color === $color['name'] ? '2px solid var(--black)' : '1px solid #ddd' ?>;"
+                        title="<?= htmlspecialchars($color['name']) ?>"
+                        onclick="setFilter('color', '<?= htmlspecialchars($color['name']) ?>')"
+                    ></button>
+                    <?php endforeach; ?>
+                    <input type="hidden" name="color" id="color-input" value="<?= htmlspecialchars($selected_color) ?>"/>
+                </div>
             </div>
-        </div>
 
+            <!-- Price Range -->
+            <div class="filter-section">
+                <p class="filter-title">Price Range</p>
+                <input type="range" name="max_price" min="0" max="1000" step="10" 
+                       value="<?= $max_price ?>" id="price-range" 
+                       oninput="document.getElementById('price-val').innerText = this.value"/>
+                <div class="price-labels">
+                    <span>$0</span>
+                    <span id="price-max">$<span id="price-val"><?= number_format($max_price) ?></span></span>
+                </div>
+            </div>
+
+            <button type="submit" class="filter-apply-btn" style="margin-top:15px; width:100%; padding:12px; background:var(--black); color:white; border:none; cursor:pointer; font-size:11px; font-weight:700; letter-spacing:1.5px; transition: all 0.3s ease;">APPLY FILTERS</button>
+            
+            <?php if(!empty($category_name) || !empty($selected_size) || !empty($selected_color) || $max_price < 1000): ?>
+                <a href="products.php" style="display:block; text-align:center; margin-top:10px; font-size:10px; color:#999; text-decoration:none; text-transform:uppercase; letter-spacing:1px;">Clear All Filters</a>
+            <?php endif; ?>
+        </form>
     </aside>
+
+    <script>
+    function setFilter(type, value) {
+        document.getElementById(type + '-input').value = value;
+        // Optional: auto-submit
+        // document.getElementById('filter-form').submit();
+        
+        // Highlight active button visually immediately
+        if(type === 'size') {
+            document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+    }
+    </script>
 
     <!-- PRODUCTS -->
     <main class="products-area">

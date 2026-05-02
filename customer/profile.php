@@ -78,20 +78,18 @@ $sidebar_prefs = [
 
 <!-- ── NAV ── -->
 <nav>
+    <?php include 'nav_counts.php'; ?>
     <a href="../index.php" class="nav-logo">ZALORA</a>
     <ul class="nav-links">
-        <li><a href="products.php">WOMEN</a></li>
-        <li><a href="products.php">MEN</a></li>
-        <li><a href="products.php">KIDS</a></li>
-        <li><a href="products.php">LUXURY</a></li>
-        <li><a href="products.php">BEAUTY</a></li>
+        <?php foreach ($nav_links as $link): ?>
+            <li><a href="products.php?category=<?= urlencode($link) ?>"><?= htmlspecialchars($link) ?></a></li>
+        <?php endforeach; ?>
     </ul>
     <div class="nav-actions">
-        <?php include 'nav_counts.php'; ?>
-        <div class="nav-search">
+        <form action="products.php" method="GET" class="nav-search">
             <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-            <input type="text" placeholder="Search" />
-        </div>
+            <input type="text" name="q" placeholder="Search" />
+        </form>
         <a href="profile.php" title="Account" style="color:var(--black);display:flex;align-items:center;text-decoration:none;gap:8px;">
             <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             <?php if (!empty($nav_user_name)): ?>
