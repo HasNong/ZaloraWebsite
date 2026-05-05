@@ -26,13 +26,17 @@ $stmt->execute();
 $result = $stmt->get_result();
 
 while ($row = $result->fetch_assoc()) {
+    $img = $row['Prod_Image'] ?? "https://via.placeholder.com/400x500?text=No+Image";
+    if (!empty($row['Prod_Image']) && strpos($row['Prod_Image'], 'http') === false) {
+        $img = '../' . $row['Prod_Image'];
+    }
     $cart_items[] = [
         "id"      => $row['CItm_Id'],
         "name"    => $row['Prod_Name'],
         "variant" => ($row['PVar_Color'] ? $row['PVar_Color'] . " • " : "") . "Size " . $row['PVar_Size'],
         "price"   => $row['Prod_BasePrice'],
         "qty"     => $row['CItm_Quantity'],
-        "img"     => $row['Prod_Image'] ?? "https://via.placeholder.com/400x500?text=No+Image",
+        "img"     => $img,
     ];
 }
 

@@ -1,5 +1,32 @@
 <?php
 session_start();
+require_once '../config/db.php';
+
+// Auth check
+if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'seller') {
+    header("Location: ../auth/login.php");
+    exit;
+}
+
+// Real dynamic data filtered by seller
+$stmt_count = $conn->prepare("SELECT COUNT(*) as count FROM product WHERE Sell_Id = ?");
+$stmt_count->bind_param("i", $seller_id);
+$stmt_count->execute();
+$total_products = $stmt_count->get_result()->fetch_assoc()['count'];
+
+// Top Selling Products (Calculated from order_item via variants)
+$query_top = "SELECT p.*, 
+              (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id AND PImg_IsPrimary = 1 LIMIT 1) as img,
+              (SELECT SUM(PVar_StockQuantity) FROM product_variant WHERE Prod_Id = p.Prod_Id) as total_stock,
+              IFNULL((SELECT SUM(oi.OdItm_Quantity) FROM order_item oi JOIN product_variant pv ON oi.PVar_Id = pv.PVar_Id WHERE pv.Prod_Id = p.Prod_Id), 0) as total_sales,
+              IFNULL((SELECT SUM(oi.OdItm_Subtotal) FROM order_item oi JOIN product_variant pv ON oi.PVar_Id = pv.PVar_Id WHERE pv.Prod_Id = p.Prod_Id), 0) as total_revenue
+              FROM product p 
+              WHERE p.Sell_Id = ? 
+              ORDER BY total_sales DESC LIMIT 5";
+$stmt_top = $conn->prepare($query_top);
+$stmt_top->bind_param("i", $seller_id);
+$stmt_top->execute();
+$recent_products = $stmt_top->get_result();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -7,56 +34,25 @@ session_start();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Seller Center - Dashboard</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/seller.css">
 </head>
 <body>
 
-<!-- SIDEBAR -->
-<aside class="sidebar">
-    <div class="sidebar-header">
-        <h1>SELLER CENTER</h1>
-        <p>GLOBAL FASHION LTD.</p>
-    </div>
-    
-    <ul class="sidebar-nav">
-        <li><a href="dashboard.php" class="active">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
-            DASHBOARD
-        </a></li>
-        <li><a href="inventory.php">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-            INVENTORY
-        </a></li>
-        <li><a href="orders.php">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
-            ORDERS
-        </a></li>
-        <li><a href="profile.php">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-            PROFILE
-        </a></li>
-    </ul>
+<?php include 'sidebar.php'; ?>
 
-    <div class="sidebar-footer">
-        <a href="add_product.php" class="btn-add-product">ADD NEW PRODUCT</a>
-    </div>
-</aside>
-
-<!-- MAIN WRAPPER -->
 <div class="main-wrapper">
     <main class="main-content">
         
-        <!-- HEADER -->
         <header class="page-header">
             <div>
                 <h2 class="page-title">DASHBOARD OVERVIEW</h2>
-                <p class="page-subtitle">Welcome back, Global Fashion Team. Here's your performance for the last 24 hours.</p>
+                <p class="page-subtitle">Welcome back, <?= htmlspecialchars($seller_name) ?>. Here's your performance for the last 24 hours.</p>
             </div>
             <div class="header-actions">
                 <button class="btn-export">EXPORT DATA</button>
                 <button class="btn-icon">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
                 </button>
             </div>
         </header>
@@ -91,166 +87,137 @@ session_start();
             </div>
         </div>
 
-        <!-- CHARTS & FEED -->
         <div class="dashboard-grid">
-            
-            <!-- CHART CARD -->
-            <div class="card">
-                <div class="card-header">
-                    <span class="card-title">SALES PERFORMANCE</span>
-                    <div class="toggle-group">
-                        <button class="toggle-btn active">WEEKLY</button>
-                        <button class="toggle-btn">MONTHLY</button>
-                    </div>
-                </div>
-                
-                <div class="bar-chart-container">
-                    <div class="bar-wrapper"><div class="bar" style="height: 30%"></div></div>
-                    <div class="bar-wrapper"><div class="bar" style="height: 45%"></div></div>
-                    <div class="bar-wrapper"><div class="bar" style="height: 60%"></div></div>
-                    <div class="bar-wrapper">
-                        <div class="bar-label">THU</div>
-                        <div class="bar active" style="height: 100%"></div>
-                    </div>
-                    <div class="bar-wrapper"><div class="bar" style="height: 65%"></div></div>
-                    <div class="bar-wrapper"><div class="bar" style="height: 40%"></div></div>
-                    <div class="bar-wrapper"><div class="bar" style="height: 35%"></div></div>
-                </div>
-
-                <div class="chart-footer">
-                    <div style="display:flex;gap:3rem;">
-                        <div class="chart-stat">
-                            <span class="chart-stat-label">AVG ORDER VALUE</span>
-                            <span class="chart-stat-val">$102.50</span>
-                        </div>
-                        <div class="chart-stat">
-                            <span class="chart-stat-label">TOTAL ITEMS SOLD</span>
-                            <span class="chart-stat-val">1,842</span>
+            <!-- LEFT COLUMN -->
+            <div class="dashboard-left">
+                <div class="content-card">
+                    <div class="card-header">
+                        <h3 class="card-title">SALES PERFORMANCE</h3>
+                        <div class="tabs" style="display:flex; border:1px solid #eee;">
+                            <button style="border:none; padding:8px 15px; background:#000; color:#fff; font-size:10px; font-weight:700;">WEEKLY</button>
+                            <button style="border:none; padding:8px 15px; background:#fff; color:#666; font-size:10px; font-weight:700;">MONTHLY</button>
                         </div>
                     </div>
-                    <a href="#" class="link-muted">VIEW FULL ANALYTICS</a>
-                </div>
-            </div>
-
-            <!-- ACTIVITY FEED -->
-            <div class="card" style="padding-bottom: 0;">
-                <div class="card-header" style="margin-bottom: 1rem;">
-                    <span class="card-title">RECENT ACTIVITY</span>
-                </div>
-                
-                <div class="activity-feed">
-                    <div class="activity-item">
-                        <div class="activity-icon img">
-                            <img src="https://images.unsplash.com/photo-1496747611176-843222e1e57c?w=100&q=80" alt="Silk Dress">
+                    <!-- Chart Placeholder -->
+                    <div style="height: 250px; display: flex; align-items: flex-end; gap: 20px; padding: 20px 0;">
+                        <div style="flex:1; height: 30%; background: #f4f4f4;"></div>
+                        <div style="flex:1; height: 50%; background: #f4f4f4;"></div>
+                        <div style="flex:1; height: 40%; background: #f4f4f4;"></div>
+                        <div style="flex:1; height: 60%; background: #f4f4f4;"></div>
+                        <div style="flex:1; height: 100%; background: #000; position:relative;">
+                             <span style="position:absolute; top:-25px; left:50%; transform:translateX(-50%); font-size:10px; font-weight:700;">THU</span>
                         </div>
-                        <div class="activity-content">
-                            <p><strong>Order #92843</strong> placed for "Minimal Silk Slip Dress"</p>
-                            <span class="activity-time">2 MINUTES AGO</span>
-                        </div>
+                        <div style="flex:1; height: 55%; background: #f4f4f4;"></div>
+                        <div style="flex:1; height: 35%; background: #f4f4f4;"></div>
+                        <div style="flex:1; height: 30%; background: #f4f4f4;"></div>
                     </div>
-                    
-                    <div class="activity-item">
-                        <div class="activity-icon dark">
-                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+                    <div style="display: flex; gap: 40px; border-top: 1px solid #eee; padding-top: 15px;">
+                        <div>
+                            <p style="font-size:10px; color:#999; margin:0;">AVG ORDER VALUE</p>
+                            <p style="font-size:16px; font-weight:700; margin:4px 0;">$102.50</p>
                         </div>
-                        <div class="activity-content">
-                            <p><strong>Inventory Alert:</strong> "Oversized Blazer" is low on stock (2 units left)</p>
-                            <span class="activity-time">15 MINUTES AGO</span>
+                        <div>
+                            <p style="font-size:10px; color:#999; margin:0;">TOTAL ITEMS SOLD</p>
+                            <p style="font-size:16px; font-weight:700; margin:4px 0;">1,842</p>
                         </div>
-                    </div>
-                    
-                    <div class="activity-item">
-                        <div class="activity-icon img">
-                            <img src="https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=100&q=80" alt="Coat">
-                        </div>
-                        <div class="activity-content">
-                            <p><strong>Product Live:</strong> "Winter Collection '24" Wool Coat is now public</p>
-                            <span class="activity-time">1 HOUR AGO</span>
-                        </div>
-                    </div>
-
-                    <div class="activity-item">
-                        <div class="activity-icon">
-                            <svg viewBox="0 0 24 24" width="14" height="14" fill="var(--text-main)" stroke="var(--text-main)" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
-                        </div>
-                        <div class="activity-content">
-                            <p><strong>New Review:</strong> 5-stars received on "Tailored Trousers"</p>
-                            <span class="activity-time">3 HOURS AGO</span>
+                        <div style="margin-left:auto;">
+                            <a href="#" style="font-size:10px; font-weight:700; color:#000; text-decoration:none; border-bottom:1px solid #000;">VIEW FULL ANALYTICS</a>
                         </div>
                     </div>
                 </div>
-                
-                <a href="#" class="view-all-btn">VIEW ALL NOTIFICATIONS</a>
-            </div>
 
-        </div>
-
-        <!-- BOTTOM GRID -->
-        <div class="bottom-grid">
-            
-            <!-- TOP SELLING TABLE -->
-            <div>
-                <h2 class="page-title" style="margin-bottom: 1.5rem;">TOP SELLING PRODUCTS</h2>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>PRODUCT</th>
-                            <th>STATUS</th>
-                            <th>SALES</th>
-                            <th>REVENUE</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>
-                                <div class="product-cell">
-                                    <img src="https://images.unsplash.com/photo-1551028719-00167b16eac5?w=100&q=80" alt="Jacket" class="product-img">
-                                    <span class="product-name">Cropped Vegan Leather Jacket</span>
-                                </div>
-                            </td>
-                            <td><span class="badge in-stock">IN STOCK</span></td>
-                            <td class="sales-val">482</td>
-                            <td class="revenue-val">$43,380</td>
-                        </tr>
-                        <tr>
-                            <td>
-                                <div class="product-cell">
-                                    <img src="https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=100&q=80" alt="Sneakers" class="product-img">
-                                    <span class="product-name">Classic White Sneakers</span>
-                                </div>
-                            </td>
-                            <td><span class="badge low-stock">LOW STOCK</span></td>
-                            <td class="sales-val">312</td>
-                            <td class="revenue-val">$24,960</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- QUICK ACTIONS -->
-            <div class="card dark-card">
-                <span class="card-title" style="display:block;margin-bottom:8px;">QUICK ACTIONS</span>
-                <p>Frequent tasks at your fingertips.</p>
-                
-                <button class="action-btn">
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                    RUN A PROMOTION
-                </button>
-                <button class="action-btn">
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-                    HELP CENTER
-                </button>
-                <button class="action-btn">
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                    LIVE CHAT SUPPORT
-                </button>
-
-                <div class="store-health">
-                    <div class="health-label">STORE HEALTH</div>
-                    <div class="health-val">98% <span class="health-status">EXCELLENT</span></div>
+                <div class="content-card">
+                    <div class="card-header">
+                        <h3 class="card-title">TOP SELLING PRODUCTS</h3>
+                    </div>
+                    <table class="inventory-table">
+                        <thead>
+                            <tr>
+                                <th>PRODUCT</th>
+                                <th>STATUS</th>
+                                <th>SALES</th>
+                                <th>REVENUE</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php while($p = $recent_products->fetch_assoc()): 
+                                $stock = $p['total_stock'] ?? 0;
+                                $status_tag = $stock <= 0 ? 'OUT OF STOCK' : ($stock < 10 ? 'LOW STOCK' : 'IN STOCK');
+                                $status_class = $stock <= 0 ? 'out' : ($stock < 10 ? 'low' : 'active');
+                                
+                                $img_path = $p['img'] ?? 'https://via.placeholder.com/50';
+                                if (!empty($p['img']) && strpos($p['img'], 'http') === false) {
+                                    $img_path = '../' . $p['img'];
+                                }
+                            ?>
+                            <tr>
+                                <td>
+                                    <div class="prod-details">
+                                        <img src="<?= $img_path ?>" class="prod-thumb">
+                                        <div class="prod-info">
+                                            <h4><?= htmlspecialchars($p['Prod_Name']) ?></h4>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><span class="status-tag <?= $status_class ?>"><?= $status_tag ?></span></td>
+                                <td style="font-weight:600;"><?= number_format($p['total_sales']) ?></td>
+                                <td style="font-weight:700;">$<?= number_format($p['total_revenue'], 2) ?></td>
+                            </tr>
+                            <?php endwhile; ?>
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
+            <!-- RIGHT COLUMN -->
+            <div class="dashboard-right">
+                <div class="content-card">
+                    <h3 class="card-title" style="margin-bottom: 1.5rem;">RECENT ACTIVITY</h3>
+                    <div style="display:flex; flex-direction:column; gap:20px;">
+                        <div style="display:flex; gap:15px;">
+                            <div style="width:40px; height:40px; background:#f4f4f4; display:flex; align-items:center; justify-content:center;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"></path><path d="M3 6h18"></path><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
+                            </div>
+                            <div>
+                                <p style="font-size:12px; margin:0;">Order #92843 placed for "Minimal Silk Slip Dress"</p>
+                                <p style="font-size:10px; color:#999; margin:4px 0;">2 MINUTES AGO</p>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:15px;">
+                            <div style="width:40px; height:40px; background:#000; color:#fff; display:flex; align-items:center; justify-content:center;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"></path><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.27 6.96 8.73 5.05 8.73-5.05"></path><path d="M12 22.08V12"></path></svg>
+                            </div>
+                            <div>
+                                <p style="font-size:12px; margin:0;">Inventory Alert: "Oversized Blazer" is low on stock (2 units left)</p>
+                                <p style="font-size:10px; color:#999; margin:4px 0;">15 MINUTES AGO</p>
+                            </div>
+                        </div>
+                    </div>
+                    <button style="width:100%; margin-top:2rem; padding:10px; background:none; border:1px solid #eee; font-size:10px; font-weight:700; cursor:pointer;">VIEW ALL NOTIFICATIONS</button>
+                </div>
+
+                <div class="content-card" style="background:#000; color:#fff;">
+                    <h3 class="card-title" style="color:#fff; margin-bottom:1rem;">QUICK ACTIONS</h3>
+                    <p style="font-size:11px; color:#aaa; margin-bottom:2rem;">Frequent tasks at your fingertips.</p>
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <button style="background:none; border:1px solid #333; color:#fff; padding:12px; text-align:left; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:10px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12v10H4V12"></path><path d="M2 7h20v5H2z"></path><path d="M12 22V7"></path><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"></path><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path></svg>
+                            RUN A PROMOTION
+                        </button>
+                        <button style="background:none; border:1px solid #333; color:#fff; padding:12px; text-align:left; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:10px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><path d="M12 17h.01"></path></svg>
+                            HELP CENTER
+                        </button>
+                    </div>
+                    <div style="margin-top:3rem; border-top:1px solid #333; padding-top:2rem;">
+                         <p style="font-size:10px; color:#aaa; margin-bottom:8px;">STORE HEALTH</p>
+                         <div style="display:flex; align-items:baseline; gap:10px;">
+                             <span style="font-size:32px; font-weight:800;">98%</span>
+                             <span style="font-size:11px; font-weight:700; color:var(--accent-green);">EXCELLENT</span>
+                         </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
     </main>

@@ -1,8 +1,15 @@
 <?php
 session_start();
 
-// Redirect if already logged in
-if (isset($_SESSION['user_id'])) { header('Location: ../customer/profile.php'); exit; }
+// Redirect if already logged in based on role
+if (isset($_SESSION['role'])) {
+    if ($_SESSION['role'] === 'admin') { header('Location: ../admin/dashboard.php'); exit; }
+    if ($_SESSION['role'] === 'seller') { header('Location: ../seller/dashboard.php'); exit; }
+    if ($_SESSION['role'] === 'customer') { header('Location: ../customer/profile.php'); exit; }
+} else if (isset($_SESSION['user_id'])) { 
+    // Fallback for old session format
+    header('Location: ../customer/profile.php'); exit; 
+}
 
 $error = $_SESSION['error'] ?? '';
 $success = $_SESSION['success'] ?? '';

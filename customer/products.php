@@ -10,7 +10,8 @@ $selected_color = isset($_GET['color']) ? $_GET['color'] : '';
 $search_q = isset($_GET['q']) ? trim($_GET['q']) : '';
 
 $query = "SELECT DISTINCT p.Prod_Id, p.Prod_Name, p.Prod_BasePrice, b.Brand_Name, 
-          (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id AND PImg_IsPrimary = 1 LIMIT 1) as Primary_Image
+          (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id AND PImg_IsPrimary = 1 LIMIT 1) as Primary_Image,
+          (SELECT PVar_Id FROM PRODUCT_VARIANT WHERE Prod_Id = p.Prod_Id LIMIT 1) as Default_Variant
           FROM PRODUCT p
           JOIN BRAND b ON p.Brand_Id = b.Brand_Id
           LEFT JOIN CATEGORY c ON p.Ctgry_Id = c.Ctgry_Id
@@ -51,12 +52,19 @@ $products = [];
 
 if ($result) {
     while ($row = $result->fetch_assoc()) {
+        // Smart Image Pathing
+        $img = $row['Primary_Image'] ?? "https://via.placeholder.com/600x800?text=No+Image";
+        if (!empty($row['Primary_Image']) && strpos($row['Primary_Image'], 'http') === false) {
+            $img = '../' . $row['Primary_Image'];
+        }
+
         $products[] = [
             "id"    => $row['Prod_Id'],
+            "pvar_id" => $row['Default_Variant'],
             "brand" => $row['Brand_Name'],
             "name"  => $row['Prod_Name'],
             "price" => $row['Prod_BasePrice'],
-            "img"   => $row['Primary_Image'] ?? "https://via.placeholder.com/600x800?text=No+Image",
+            "img"   => $img,
             "badge" => "",
             "sold_out" => false
         ];
@@ -295,7 +303,7 @@ $colors = [
                         <?php endif; ?>
                     </div>
                 </a>
-                <button class="product-wish" onclick="toggleWish(this)" title="Wishlist">♡</button>
+                <button class="product-wish" onclick="toggleWish(this, <?= $p['pvar_id'] ?? 0 ?>)" title="Wishlist">♡</button>
                 <p class="product-brand"><?= htmlspecialchars($p['brand']) ?></p>
                 <p class="product-name"><?= htmlspecialchars($p['name']) ?></p>
                 <p class="product-price">$<?= number_format($p['price'], 2) ?></p>
@@ -355,8 +363,11 @@ $colors = [
 </footer>
 
 <script>
-    async function toggleWish(btn) {
-        const pvarId = 1; // Placeholder for static list
+    async function toggleWish(btn, pvarId) {
+        if (!pvarId || pvarId <= 0) {
+            alert("This product is currently unavailable for wishlist.");
+            return;
+        }
 
         const formData = new FormData();
         formData.append('pvar_id', pvarId);

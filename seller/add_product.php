@@ -2,9 +2,16 @@
 session_start();
 require_once '../config/db.php';
 
+// Auth check
+if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'seller') {
+    header("Location: ../auth/login.php");
+    exit;
+}
+
+$seller_id = $_SESSION['user_id'];
+
 // Fetch Categories for dropdown
 $categories = $conn->query("SELECT Ctgry_Id, Ctgry_Name FROM CATEGORY WHERE Ctgry_IsActive = 1 ORDER BY Ctgry_Name");
-
 // Fetch Brands for dropdown
 $brands = $conn->query("SELECT Brand_Id, Brand_Name FROM BRAND ORDER BY Brand_Name");
 
@@ -14,33 +21,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $desc = $_POST['desc'] ?? '';
     $price = $_POST['price'] ?? 0;
     $ctgry_id = $_POST['category_id'] ?? 0;
-    $brand_id = $_POST['brand_id'] ?? 0;
-    $img_url = $_POST['img_url'] ?? '';
+    $brand_id = !empty($_POST['brand_id']) ? $_POST['brand_id'] : NULL;
+    $image_base64 = $_POST['prod_image_data'] ?? '';
 
     if ($name && $price > 0 && $ctgry_id > 0) {
-        // Generate manual Prod_Id (matching existing pattern)
+        // Get next Prod_Id
         $max_res = $conn->query("SELECT MAX(Prod_Id) as max_id FROM PRODUCT");
         $prod_id = ($max_res->fetch_assoc()['max_id'] ?? 0) + 1;
 
-        $stmt = $conn->prepare("INSERT INTO PRODUCT (Prod_Id, Brand_Id, Ctgry_Id, Prod_Name, Prod_Desc, Prod_BasePrice, Prod_IsActive, Prod_AddedAt) VALUES (?, ?, ?, ?, ?, ?, 1, NOW())");
-        $stmt->bind_param("iiissd", $prod_id, $brand_id, $ctgry_id, $name, $desc, $price);
+        // INSERT into PRODUCT (Price is 'd' for double/decimal)
+        $stmt = $conn->prepare("INSERT INTO PRODUCT (Prod_Id, Sell_Id, Brand_Id, Ctgry_Id, Prod_Name, Prod_Desc, Prod_BasePrice, Prod_IsActive, Prod_CreatedAt, Prod_UpdatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())");
+        $stmt->bind_param("iiiissd", $prod_id, $seller_id, $brand_id, $ctgry_id, $name, $desc, $price);
         
         if ($stmt->execute()) {
-            // Also add primary image if URL provided
-            if (!empty($img_url)) {
-                $max_img = $conn->query("SELECT MAX(PImg_Id) as max_id FROM PRODUCT_IMAGE");
-                $pimg_id = ($max_img->fetch_assoc()['max_id'] ?? 0) + 1;
+            // Handle Image Upload
+            if (!empty($image_base64)) {
+                $upload_dir = '../assets/uploads/products/';
+                if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
+
+                // Handle both "data:image/png;base64,..." and raw base64
+                if (strpos($image_base64, 'base64,') !== false) {
+                    $image_parts = explode("base64,", $image_base64);
+                    $image_base64_decoded = base64_decode($image_parts[1]);
+                    $image_type_aux = explode("image/", $image_parts[0]);
+                    $image_type = trim($image_type_aux[1] ?? 'png', '; ');
+                } else {
+                    $image_base64_decoded = base64_decode($image_base64);
+                    $image_type = 'png';
+                }
                 
-                $img_stmt = $conn->prepare("INSERT INTO PRODUCT_IMAGE (PImg_Id, Prod_Id, PImg_ImgUrl, PImg_IsPrimary) VALUES (?, ?, ?, 1)");
-                $img_stmt->bind_param("iis", $pimg_id, $prod_id, $img_url);
-                $img_stmt->execute();
+                if ($image_base64_decoded) {
+                    $file_name = 'prod_' . $prod_id . '_' . time() . '.' . $image_type;
+                    $file_path = $upload_dir . $file_name;
+                    $db_save_path = 'assets/uploads/products/' . $file_name;
+                    
+                    if (file_put_contents($file_path, $image_base64_decoded)) {
+                        $max_img = $conn->query("SELECT MAX(PImg_Id) as max_id FROM PRODUCT_IMAGE");
+                        $pimg_id = ($max_img->fetch_assoc()['max_id'] ?? 0) + 1;
+                        
+                        $img_stmt = $conn->prepare("INSERT INTO PRODUCT_IMAGE (PImg_Id, Prod_Id, PImg_ImgUrl, PImg_IsPrimary) VALUES (?, ?, ?, 1)");
+                        $img_stmt->bind_param("iis", $pimg_id, $prod_id, $db_save_path);
+                        $img_stmt->execute();
+                    }
+                }
             }
-            $msg = "Product successfully added!";
+
+            // Create a Default Variant (Size: Standard, Color: Default)
+            // This is required for Wishlist and Cart functionality
+            $max_var = $conn->query("SELECT MAX(PVar_Id) as max_id FROM PRODUCT_VARIANT");
+            $pvar_id = ($max_var->fetch_assoc()['max_id'] ?? 0) + 1;
+            
+            $sku = "SKU-" . $prod_id . "-STD";
+            $var_stmt = $conn->prepare("INSERT INTO PRODUCT_VARIANT (PVar_Id, Prod_Id, PVar_Sku, PVar_Size, PVar_Color, PVar_StockQuantity) VALUES (?, ?, ?, 'Standard', 'Default', 100)");
+            $var_stmt->bind_param("iis", $pvar_id, $prod_id, $sku);
+            $var_stmt->execute();
+
+            // Success Redirect
+            $_SESSION['success_msg'] = "Product '$name' has been successfully listed!";
+            header("Location: inventory.php");
+            exit;
         } else {
-            $msg = "Error: " . $conn->error;
+            $msg = "Database Error: " . $stmt->error;
         }
     } else {
-        $msg = "Please fill in all required fields.";
+        $msg = "Please ensure all required fields (*) are filled correctly.";
     }
 }
 ?>
@@ -50,37 +94,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Seller Center - Add Product</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/seller.css">
     <style>
-        .form-card { background: white; padding: 2.5rem; border: 1px solid #eee; max-width: 800px; }
-        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+        .form-card { background: white; padding: 2.5rem; border: 1px solid #eee; max-width: 900px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem; }
         .form-group { margin-bottom: 1.5rem; }
-        .form-group label { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; color: #888; margin-bottom: 8px; text-transform: uppercase; }
+        .form-group label { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; color: #999; margin-bottom: 8px; text-transform: uppercase; }
         .form-group input, .form-group select, .form-group textarea { 
-            width: 100%; padding: 12px; border: 1px solid #e0e0e0; font-family: 'Inter', sans-serif; font-size: 13px; outline: none; transition: border-color 0.2s;
+            width: 100%; padding: 12px; border: 1px solid #e0e0e0; font-family: 'Inter', sans-serif; font-size: 13px; outline: none; transition: all 0.2s; box-sizing: border-box;
         }
         .form-group input:focus { border-color: #000; }
+        
+        /* Dropzone */
+        .upload-zone {
+            width: 100%;
+            height: 200px;
+            border: 2px dashed #eee;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+            background: #fafafa;
+        }
+        .upload-zone:hover { border-color: #000; background: #f4f4f4; }
+        .upload-zone.has-image { border-style: solid; border-color: #eee; }
+        .upload-zone img { width: 100%; height: 100%; object-fit: contain; }
+        .upload-zone p { font-size: 11px; font-weight: 600; color: #999; margin-top: 10px; }
+        
         .alert { padding: 15px; margin-bottom: 2rem; font-size: 12px; font-weight: 600; border-left: 4px solid #000; background: #f9f9f9; }
     </style>
 </head>
 <body>
 
-<aside class="sidebar">
-    <div class="sidebar-header">
-        <h1>SELLER CENTER</h1>
-        <p>GLOBAL FASHION LTD.</p>
-    </div>
-    <ul class="sidebar-nav">
-        <li><a href="dashboard.php">DASHBOARD</a></li>
-        <li><a href="inventory.php">INVENTORY</a></li>
-        <li><a href="orders.php">ORDERS</a></li>
-        <li><a href="profile.php">PROFILE</a></li>
-    </ul>
-    <div class="sidebar-footer">
-        <a href="add_product.php" class="btn-add-product active">ADD NEW PRODUCT</a>
-    </div>
-</aside>
+<?php include 'sidebar.php'; ?>
 
 <div class="main-wrapper">
     <main class="main-content">
@@ -96,10 +147,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
 
         <div class="form-card">
-            <form method="POST">
-                <div class="form-group">
-                    <label>Product Name *</label>
-                    <input type="text" name="name" placeholder="e.g. Silk Minimalist Dress" required>
+            <form method="POST" id="productForm">
+                <!-- Unique ID and Name to prevent conflicts -->
+                <input type="hidden" name="prod_image_data" id="prod_image_data">
+                <div class="form-row">
+                    <div class="dashboard-left">
+                        <div class="form-group">
+                            <label>Product Name *</label>
+                            <input type="text" name="name" placeholder="e.g. Silk Minimalist Dress" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Description</label>
+                            <textarea name="desc" rows="6" placeholder="Describe your product..."></textarea>
+                        </div>
+                    </div>
+                    <div class="dashboard-right">
+                        <div class="form-group">
+                            <label>Product Image (Click, Drop or Paste) *</label>
+                            <div class="upload-zone" id="dropZone">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                                <p>DRAG IMAGE HERE OR PASTE</p>
+                                <input type="file" id="fileInput" accept="image/*" style="display:none;">
+                                <input type="hidden" name="image_base64" id="image_base64">
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="form-row">
@@ -123,27 +195,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 </div>
 
-                <div class="form-row">
+                <div class="form-row" style="grid-template-columns: 1fr 2fr;">
                     <div class="form-group">
                         <label>Base Price ($) *</label>
                         <input type="number" step="0.01" name="price" placeholder="0.00" required>
                     </div>
-                    <div class="form-group">
-                        <label>Primary Image URL</label>
-                        <input type="url" name="img_url" placeholder="https://images.unsplash.com/...">
+                    <div style="display:flex; align-items:flex-end; padding-bottom:1.5rem;">
+                         <button type="submit" class="btn-add-product" style="width: 100%; border: none; cursor: pointer;">PUBLISH PRODUCT</button>
                     </div>
                 </div>
-
-                <div class="form-group">
-                    <label>Description</label>
-                    <textarea name="desc" rows="5" placeholder="Detailed product description..."></textarea>
-                </div>
-
-                <button type="submit" class="btn-add-product" style="width: 200px; height: 50px; border: none; cursor: pointer;">SAVE PRODUCT</button>
             </form>
         </div>
     </main>
 </div>
+
+<script>
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const base64Input = document.getElementById('prod_image_data');
+
+// Click to upload
+dropZone.onclick = () => fileInput.click();
+
+fileInput.onchange = (e) => {
+    handleFile(e.target.files[0]);
+};
+
+// Drag and Drop
+dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('hover'); };
+dropZone.ondragleave = () => { dropZone.classList.remove('hover'); };
+dropZone.ondrop = (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('hover');
+    handleFile(e.dataTransfer.files[0]);
+};
+
+// Paste from clipboard
+window.onpaste = (e) => {
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf("image") !== -1) {
+            handleFile(items[i].getAsFile());
+        }
+    }
+};
+
+function handleFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const base64 = e.target.result;
+        base64Input.value = base64;
+        dropZone.innerHTML = `<img src="${base64}" style="width:100%; height:100%; object-fit:contain;">`;
+        dropZone.classList.add('has-image');
+        dropZone.style.borderColor = 'var(--accent-green)';
+    };
+    reader.readAsDataURL(file);
+}
+
+document.getElementById('productForm').onsubmit = (e) => {
+    if (!base64Input.value) {
+        alert("Please paste or upload an image first!");
+        e.preventDefault();
+        return false;
+    }
+};
+</script>
 
 </body>
 </html>

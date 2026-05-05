@@ -51,7 +51,11 @@ $i_stmt->execute();
 $img_res = $i_stmt->get_result();
 $images = [];
 while ($img = $img_res->fetch_assoc()) {
-    $images[] = $img['PImg_ImgUrl'];
+    $img_url = $img['PImg_ImgUrl'];
+    if (!empty($img_url) && strpos($img_url, 'http') === false) {
+        $img_url = '../' . $img_url;
+    }
+    $images[] = $img_url;
 }
 if (empty($images)) $images[] = "https://via.placeholder.com/800x1000?text=No+Image";
  
@@ -139,10 +143,16 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
 <div class="product-section">
 
     <!-- IMAGES -->
-    <div class="image-panel">
-        <div class="img-main"><img src="<?= htmlspecialchars($product['images'][0]) ?>" alt="<?= htmlspecialchars($product['name']) ?>"/></div>
-        <div class="img-detail"><img src="<?= htmlspecialchars($product['images'][1]) ?>" alt="Detail"/></div>
-        <div class="img-full"><img src="<?= htmlspecialchars($product['images'][2]) ?>" alt="Lifestyle"/></div>
+    <div class="image-panel <?= count($product['images']) === 1 ? 'single-image' : '' ?>">
+        <?php if (count($product['images']) === 1): ?>
+            <div class="img-main" style="grid-column: 1 / -1; height: 100vh; position: sticky; top: 56px;">
+                <img src="<?= htmlspecialchars($product['images'][0]) ?>" alt="<?= htmlspecialchars($product['name']) ?>" style="height: 100%; object-position: center;"/>
+            </div>
+        <?php else: ?>
+            <div class="img-main"><img src="<?= htmlspecialchars($product['images'][0]) ?>" alt="<?= htmlspecialchars($product['name']) ?>"/></div>
+            <div class="img-detail"><img src="<?= htmlspecialchars($product['images'][1] ?? $product['images'][0]) ?>" alt="Detail"/></div>
+            <div class="img-full"><img src="<?= htmlspecialchars($product['images'][2] ?? $product['images'][0]) ?>" alt="Lifestyle"/></div>
+        <?php endif; ?>
     </div>
 
     <!-- INFO -->

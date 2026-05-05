@@ -27,6 +27,10 @@ $stmt->execute();
 $result = $stmt->get_result();
 
 while ($row = $result->fetch_assoc()) {
+    $img = $row['Prod_Image'] ?? "https://via.placeholder.com/400x500?text=No+Image";
+    if (!empty($row['Prod_Image']) && strpos($row['Prod_Image'], 'http') === false) {
+        $img = '../' . $row['Prod_Image'];
+    }
     $wish_items[] = [
         "witm_id" => $row['WItm_Id'],
         "pvar_id" => $row['PVar_Id'],
@@ -35,7 +39,7 @@ while ($row = $result->fetch_assoc()) {
         "brand"   => $row['Brand_Name'],
         "variant" => ($row['PVar_Color'] ? $row['PVar_Color'] . " • " : "") . "Size " . $row['PVar_Size'],
         "price"   => $row['Prod_BasePrice'],
-        "img"     => $row['Prod_Image'] ?? "https://via.placeholder.com/400x500?text=No+Image",
+        "img"     => $img,
     ];
 }
 
