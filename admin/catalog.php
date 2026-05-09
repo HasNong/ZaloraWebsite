@@ -12,14 +12,24 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['prod_id'])) {
     $prod_id = intval($_POST['prod_id']);
     $action = $_POST['action'];
-    $status = ($action === 'approve') ? 1 : 0;
+    
+    if ($action === 'approve') {
+        $status = 1;
+        $msg = "Product approved and live!";
+    } elseif ($action === 'reject') {
+        $status = 2;
+        $msg = "Product rejected and hidden.";
+    } else {
+        $status = 0;
+        $msg = "Product de-activated and moved to pending.";
+    }
     
     $stmt = $conn->prepare("UPDATE PRODUCT SET Prod_IsActive = ? WHERE Prod_Id = ?");
     $stmt->bind_param("ii", $status, $prod_id);
     if ($stmt->execute()) {
-        $_SESSION['success'] = ($action === 'approve') ? "Product approved!" : "Product de-activated.";
+        $_SESSION['success'] = $msg;
     }
-    header("Location: catalog.php");
+    header("Location: catalog.php?tab=" . ($_GET['tab'] ?? 'pending'));
     exit;
 }
 
@@ -44,8 +54,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rview_id'])) {
 }
 
 // Fetch Data
-$pending_prod = $conn->query("SELECT p.*, s.Sell_FirstName, s.Sell_LastName, b.Brand_Name, (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id LIMIT 1) as img FROM PRODUCT p JOIN seller s ON p.Sell_Id = s.Sell_Id JOIN BRAND b ON p.Brand_Id = b.Brand_Id WHERE p.Prod_IsActive = 0");
-$active_prod = $conn->query("SELECT p.*, s.Sell_FirstName, s.Sell_LastName, b.Brand_Name, (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id LIMIT 1) as img FROM PRODUCT p JOIN seller s ON p.Sell_Id = s.Sell_Id JOIN BRAND b ON p.Brand_Id = b.Brand_Id WHERE p.Prod_IsActive = 1 LIMIT 50");
+$pending_prod = $conn->query("SELECT p.*, s.Sell_BusinessName, b.Brand_Name, (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id LIMIT 1) as img FROM PRODUCT p JOIN seller s ON p.Sell_Id = s.Sell_Id JOIN BRAND b ON p.Brand_Id = b.Brand_Id WHERE p.Prod_IsActive = 0");
+$active_prod = $conn->query("SELECT p.*, s.Sell_BusinessName, b.Brand_Name, (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id LIMIT 1) as img FROM PRODUCT p JOIN seller s ON p.Sell_Id = s.Sell_Id JOIN BRAND b ON p.Brand_Id = b.Brand_Id WHERE p.Prod_IsActive = 1 LIMIT 50");
+$rejected_prod = $conn->query("SELECT p.*, s.Sell_BusinessName, b.Brand_Name, (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id LIMIT 1) as img FROM PRODUCT p JOIN seller s ON p.Sell_Id = s.Sell_Id JOIN BRAND b ON p.Brand_Id = b.Brand_Id WHERE p.Prod_IsActive = 2");
 $pending_reviews = $conn->query("SELECT r.*, c.Cust_FirstName, c.Cust_LastName, p.Prod_Name FROM review r JOIN customer c ON r.Cust_Id = c.Cust_Id JOIN PRODUCT p ON r.Prod_Id = p.Prod_Id WHERE r.Rview_IsApproved = 0");
 
 $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'pending';
@@ -59,8 +70,8 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'pending';
     <link rel="stylesheet" href="../assets/css/admin.css">
     <style>
         .catalog-container { padding: 40px; }
-        .tabs { display: flex; gap: 20px; border-bottom: 1px solid #eee; margin-bottom: 30px; }
-        .tab { padding: 10px 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; cursor: pointer; color: #999; border-bottom: 2px solid transparent; }
+        .tabs { display: flex; gap: 20px; border-bottom: 1px solid #eee; margin-bottom: 30px; overflow-x: auto; }
+        .tab { padding: 10px 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; cursor: pointer; color: #999; border-bottom: 2px solid transparent; white-space: nowrap; }
         .tab.active { color: #000; border-color: #000; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 25px; }
         .card { background: #fff; border: 1px solid #eee; overflow: hidden; display: flex; flex-direction: column; }
@@ -91,9 +102,10 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'pending';
                 <?php endif; ?>
 
                 <div class="tabs">
-                    <div class="tab <?= $active_tab == 'pending' ? 'active' : '' ?>" onclick="location.href='?tab=pending'">Pending Products (<?= $pending_prod->num_rows ?>)</div>
+                    <div class="tab <?= $active_tab == 'pending' ? 'active' : '' ?>" onclick="location.href='?tab=pending'">Pending (<?= $pending_prod->num_rows ?>)</div>
                     <div class="tab <?= $active_tab == 'active' ? 'active' : '' ?>" onclick="location.href='?tab=active'">Active Catalog</div>
-                    <div class="tab <?= $active_tab == 'reviews' ? 'active' : '' ?>" onclick="location.href='?tab=reviews'">Pending Reviews (<?= $pending_reviews->num_rows ?>)</div>
+                    <div class="tab <?= $active_tab == 'rejected' ? 'active' : '' ?>" onclick="location.href='?tab=rejected'">Rejected (<?= $rejected_prod->num_rows ?>)</div>
+                    <div class="tab <?= $active_tab == 'reviews' ? 'active' : '' ?>" onclick="location.href='?tab=reviews'">Reviews (<?= $pending_reviews->num_rows ?>)</div>
                 </div>
 
                 <!-- PENDING PRODUCTS -->
@@ -105,7 +117,7 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'pending';
                                 <div class="card-info">
                                     <div class="card-brand"><?= htmlspecialchars($p['Brand_Name']) ?></div>
                                     <div class="card-name"><?= htmlspecialchars($p['Prod_Name']) ?></div>
-                                    <div class="card-meta">Seller: <?= htmlspecialchars($p['Sell_FirstName'] . ' ' . $p['Sell_LastName']) ?></div>
+                                    <div class="card-meta">Seller: <?= htmlspecialchars($p['Sell_BusinessName']) ?></div>
                                     <div style="font-weight:700;">$<?= number_format($p['Prod_BasePrice'], 2) ?></div>
                                 </div>
                                 <div class="card-actions">
@@ -129,13 +141,36 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'pending';
                                 <div class="card-info">
                                     <div class="card-brand"><?= htmlspecialchars($p['Brand_Name']) ?></div>
                                     <div class="card-name"><?= htmlspecialchars($p['Prod_Name']) ?></div>
-                                    <div class="card-meta">Seller: <?= htmlspecialchars($p['Sell_FirstName'] . ' ' . $p['Sell_LastName']) ?></div>
+                                    <div class="card-meta">Seller: <?= htmlspecialchars($p['Sell_BusinessName']) ?></div>
                                     <div style="font-weight:700;">$<?= number_format($p['Prod_BasePrice'], 2) ?></div>
                                 </div>
                                 <div class="card-actions">
                                     <form method="POST" style="width: 100%;">
                                         <input type="hidden" name="prod_id" value="<?= $p['Prod_Id'] ?>">
-                                        <button type="submit" name="action" value="reject" class="btn-white" style="width: 100%;">Deactivate</button>
+                                        <button type="submit" name="action" value="deactivate" class="btn-white" style="width: 100%;">Deactivate</button>
+                                    </form>
+                                </div>
+                            </div>
+                        <?php endwhile; ?>
+                    </div>
+                <?php endif; ?>
+
+                <!-- REJECTED PRODUCTS -->
+                <?php if ($active_tab == 'rejected'): ?>
+                    <div class="grid">
+                        <?php while($p = $rejected_prod->fetch_assoc()): ?>
+                            <div class="card" style="opacity: 0.7;">
+                                <img src="../<?= htmlspecialchars($p['img'] ?? 'assets/images/placeholder.jpg') ?>" class="card-img">
+                                <div class="card-info">
+                                    <div class="card-brand"><?= htmlspecialchars($p['Brand_Name']) ?></div>
+                                    <div class="card-name"><?= htmlspecialchars($p['Prod_Name']) ?></div>
+                                    <div class="card-meta">Seller: <?= htmlspecialchars($p['Sell_BusinessName']) ?></div>
+                                    <div style="font-weight:700;">$<?= number_format($p['Prod_BasePrice'], 2) ?></div>
+                                </div>
+                                <div class="card-actions">
+                                    <form method="POST" style="width: 100%;">
+                                        <input type="hidden" name="prod_id" value="<?= $p['Prod_Id'] ?>">
+                                        <button type="submit" name="action" value="approve" class="btn-black" style="width: 100%;">Re-Approve</button>
                                     </form>
                                 </div>
                             </div>

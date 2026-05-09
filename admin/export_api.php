@@ -26,14 +26,14 @@ if ($type === 'sales') {
     }
 } elseif ($type === 'inventory') {
     fputcsv($output, ['Prod ID', 'Product Name', 'Brand', 'Seller', 'Stock Total', 'Base Price']);
-    $res = $conn->query("SELECT p.Prod_Id, p.Prod_Name, b.Brand_Name, s.Sell_FirstName, s.Sell_LastName, 
+    $res = $conn->query("SELECT p.Prod_Id, p.Prod_Name, b.Brand_Name, s.Sell_BusinessName, 
                          (SELECT SUM(PVar_StockQuantity) FROM PRODUCT_VARIANT WHERE Prod_Id = p.Prod_Id) as total_stock,
                          p.Prod_BasePrice
                          FROM PRODUCT p
                          JOIN BRAND b ON p.Brand_Id = b.Brand_Id
                          JOIN seller s ON p.Sell_Id = s.Sell_Id");
     while($row = $res->fetch_assoc()) {
-        fputcsv($output, [$row['Prod_Id'], $row['Prod_Name'], $row['Brand_Name'], $row['Sell_FirstName'].' '.$row['Sell_LastName'], $row['total_stock'], $row['Prod_BasePrice']]);
+        fputcsv($output, [$row['Prod_Id'], $row['Prod_Name'], $row['Brand_Name'], $row['Sell_BusinessName'], $row['total_stock'], $row['Prod_BasePrice']]);
     }
 } elseif ($type === 'drivers') {
     fputcsv($output, ['Driver ID', 'Name', 'Balance', 'Total Deliveries']);
