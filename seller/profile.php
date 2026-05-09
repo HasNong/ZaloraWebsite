@@ -1,5 +1,32 @@
 <?php
 session_start();
+require_once '../config/db.php';
+
+// Auth check
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'seller') {
+    header("Location: ../auth/login.php");
+    exit;
+}
+
+$seller_id = $_SESSION['user_id'];
+$stmt = $conn->prepare("SELECT * FROM seller WHERE Sell_Id = ?");
+$stmt->bind_param("i", $seller_id);
+$stmt->execute();
+$seller = $stmt->get_result()->fetch_assoc();
+
+if (!$seller) {
+    die("Seller profile not found. Please contact support.");
+}
+
+// Get initials for avatar
+$initials = "S";
+if (!empty($seller['Sell_BusinessName'])) {
+    $words = explode(" ", $seller['Sell_BusinessName']);
+    $initials = strtoupper($words[0][0]);
+    if (count($words) > 1) {
+        $initials .= strtoupper($words[1][0]);
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -33,6 +60,8 @@ session_start();
             font-size: 40px;
             color: var(--text-muted);
             flex-shrink: 0;
+            font-weight: 800;
+            letter-spacing: -0.02em;
         }
         .profile-details {
             flex-grow: 1;
@@ -113,19 +142,16 @@ session_start();
                 <h2 class="page-title">SELLER PROFILE</h2>
                 <p class="page-subtitle">Manage your store's public identity and account settings.</p>
             </div>
-            <div class="header-actions">
-                <button class="btn-export">EDIT PROFILE</button>
-            </div>
         </header>
 
         <div class="profile-container">
             
             <div class="profile-card">
                 <div class="profile-avatar">
-                    GF
+                    <?= $initials ?>
                 </div>
                 <div class="profile-details">
-                    <h3 class="profile-name">Global Fashion Ltd.</h3>
+                    <h3 class="profile-name"><?= htmlspecialchars($seller['Sell_BusinessName']) ?></h3>
                     <div class="profile-badge">
                         <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3" style="display:inline;margin-right:2px;vertical-align:middle;"><polyline points="20 6 9 17 4 12"></polyline></svg>
                         VERIFIED SELLER
@@ -134,19 +160,19 @@ session_start();
                     <div class="info-grid">
                         <div class="info-group">
                             <label>BUSINESS EMAIL</label>
-                            <p>contact@globalfashion.com</p>
+                            <p><?= htmlspecialchars($seller['Sell_Email']) ?></p>
                         </div>
                         <div class="info-group">
                             <label>PHONE NUMBER</label>
-                            <p>+1 (555) 123-4567</p>
+                            <p><?= htmlspecialchars($seller['Sell_Phone'] ?? 'Not provided') ?></p>
                         </div>
                         <div class="info-group">
                             <label>SELLER ID</label>
-                            <p>#SLR-99824</p>
+                            <p>#SLR-<?= str_pad($seller['Sell_Id'], 5, '0', STR_PAD_LEFT) ?></p>
                         </div>
                         <div class="info-group">
                             <label>JOINED DATE</label>
-                            <p>March 15, 2023</p>
+                            <p><?= date('F d, Y', strtotime($seller['Sell_JoinedAt'])) ?></p>
                         </div>
                     </div>
                 </div>
@@ -155,7 +181,6 @@ session_start();
             <div class="danger-zone">
                 <h4 class="danger-title">Account Access</h4>
                 <p style="margin-bottom: 1.5rem; color: var(--text-muted);">Securely log out of your seller session to protect your business data.</p>
-                <!-- Links to the same logout script used by customers -->
                 <button class="btn-danger" onclick="window.location.href='../auth/logout.php'">SIGN OUT OF SELLER CENTER</button>
             </div>
 
@@ -167,7 +192,7 @@ session_start();
     <footer class="seller-footer">
         <div>
             <div class="footer-logo">ZALORA</div>
-            <div class="footer-copy">© 2024 ZALORA ALL RIGHTS RESERVED</div>
+            <div class="footer-copy">© <?= date('Y') ?> ZALORA ALL RIGHTS RESERVED</div>
         </div>
         <div class="footer-links">
             <a href="#">HELP & SUPPORT</a>

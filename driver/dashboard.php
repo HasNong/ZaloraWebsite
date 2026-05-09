@@ -37,26 +37,32 @@ $remaining = $stmt_rem->get_result()->fetch_assoc()['remaining'];
 // 4. Fetch Next Stop (First OUT_FOR_DELIVERY for this driver)
 $query_next = "SELECT o.Order_Id, o.Order_TotalAmnt, a.Addrs_Street, a.Addrs_City, a.Addrs_ZipCode, a.Addrs_RcpntName
                FROM shipment s
-               JOIN ORDERS o ON s.Order_Id = o.Order_Id
-               JOIN ADDRESS a ON o.Addrs_Id = a.Addrs_Id
+               JOIN orders o ON s.Order_Id = o.Order_Id
+               JOIN address a ON o.Addrs_Id = a.Addrs_Id
                WHERE s.Driv_Id = ? AND s.Ship_Status = 'OUT_FOR_DELIVERY'
                LIMIT 1";
 $stmt_next = $conn->prepare($query_next);
 $stmt_next->bind_param("i", $driver_id);
 $stmt_next->execute();
 $next_stop = $stmt_next->get_result()->fetch_assoc();
-
+if (!$next_stop) {
+    $next_stop = [
+        'Order_Id' => 'ZL-EMPTY',
+        'Addrs_Street' => 'Go Online to see assignments',
+        'Addrs_City' => 'Waiting...',
+        'Addrs_ZipCode' => '0000',
+        'Addrs_RcpntName' => 'No Active Orders'
     ];
 }
 
 // 5. Fetch Approved Returns for Pick-up
 $query_returns = "SELECT rr.*, a.Addrs_Street, a.Addrs_City, a.Addrs_RcpntName, p.Prod_Name
                   FROM return_request rr
-                  JOIN ORDER_ITEM oi ON rr.OdItm_Id = oi.OdItm_Id
-                  JOIN ORDERS o ON oi.Order_Id = o.Order_Id
-                  JOIN ADDRESS a ON o.Addrs_Id = a.Addrs_Id
-                  JOIN PRODUCT_VARIANT pv ON oi.PVar_Id = pv.PVar_Id
-                  JOIN PRODUCT p ON pv.Prod_Id = p.Prod_Id
+                  JOIN order_item oi ON rr.OdItm_Id = oi.OdItm_Id
+                  JOIN orders o ON oi.Order_Id = o.Order_Id
+                  JOIN address a ON o.Addrs_Id = a.Addrs_Id
+                  JOIN product_variant pv ON oi.PVar_Id = pv.PVar_Id
+                  JOIN product p ON pv.Prod_Id = p.Prod_Id
                   WHERE rr.Rtrn_Status = 'APPROVED'
                   LIMIT 5";
 $approved_returns = $conn->query($query_returns);

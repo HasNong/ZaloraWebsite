@@ -1,8 +1,6 @@
 <?php
 include 'config/db.php';
-
-echo "RETURN_REQUEST TABLE:\n";
-$res = $conn->query("DESCRIBE return_request");
+$res = $conn->query("SELECT Rtrn_Id, Rtrn_Status FROM return_request");
 while($row = $res->fetch_assoc()) {
     print_r($row);
 }
