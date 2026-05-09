@@ -64,6 +64,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         }
     }
 
+    // ── 4. DRIVER CHECK ──
+    $stmt = $conn->prepare("SELECT Driv_Id, Driv_FirstName, Driv_LastName, Driv_PsswdHash FROM driver WHERE Driv_Email = ? AND Driv_IsActive = 1");
+    $stmt->bind_param("s", $email);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($row = $result->fetch_assoc()) {
+        if (password_verify($password, $row['Driv_PsswdHash'])) {
+            $_SESSION['user_id'] = $row['Driv_Id'];
+            $_SESSION['user_name'] = trim($row['Driv_FirstName'] . ' ' . $row['Driv_LastName']);
+            $_SESSION['user_email'] = $email;
+            $_SESSION['role'] = 'driver';
+            
+            header("Location: ../driver/dashboard.php");
+            exit;
+        }
+    }
+
     // If none of the above
     $_SESSION['error'] = "Invalid email or password.";
     header("Location: login.php?tab=login");

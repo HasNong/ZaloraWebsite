@@ -8,13 +8,42 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'seller') {
     exit;
 }
 
-// Real dynamic data filtered by seller
+$seller_id = $_SESSION['user_id'];
+$seller_name = $_SESSION['user_name'] ?? 'Seller';
+
+// 1. Fetch Low Stock Items (Critical < 5)
+$low_stock_query = "SELECT p.Prod_Id, p.Prod_Name, 
+                    (SELECT SUM(PVar_StockQuantity) FROM product_variant WHERE Prod_Id = p.Prod_Id) as total_stock
+                    FROM product p 
+                    WHERE p.Sell_Id = ? 
+                    HAVING total_stock < 5";
+$stmt_low = $conn->prepare($low_stock_query);
+$stmt_low->bind_param("i", $seller_id);
+$stmt_low->execute();
+$low_stock_res = $stmt_low->get_result();
+$low_stock_count = $low_stock_res->num_rows;
+
+// 2. Total Products Count
 $stmt_count = $conn->prepare("SELECT COUNT(*) as count FROM product WHERE Sell_Id = ?");
 $stmt_count->bind_param("i", $seller_id);
 $stmt_count->execute();
 $total_products = $stmt_count->get_result()->fetch_assoc()['count'];
 
-// Top Selling Products (Calculated from order_item via variants)
+// 3. Real Metrics (Revenue and Orders)
+$metric_query = "SELECT SUM(oi.OdItm_Subtotal) as total_revenue, COUNT(DISTINCT oi.Order_Id) as total_orders
+                 FROM order_item oi 
+                 JOIN product_variant pv ON oi.PVar_Id = pv.PVar_Id 
+                 JOIN product p ON pv.Prod_Id = p.Prod_Id
+                 JOIN orders o ON oi.Order_Id = o.Order_Id
+                 WHERE p.Sell_Id = ? AND o.Order_Status != 'CANCELLED'";
+$stmt_metric = $conn->prepare($metric_query);
+$stmt_metric->bind_param("i", $seller_id);
+$stmt_metric->execute();
+$metrics = $stmt_metric->get_result()->fetch_assoc();
+$total_revenue = $metrics['total_revenue'] ?? 0;
+$active_orders = $metrics['total_orders'] ?? 0;
+
+// 4. Top Selling Products
 $query_top = "SELECT p.*, 
               (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id AND PImg_IsPrimary = 1 LIMIT 1) as img,
               (SELECT SUM(PVar_StockQuantity) FROM product_variant WHERE Prod_Id = p.Prod_Id) as total_stock,
@@ -27,6 +56,19 @@ $stmt_top = $conn->prepare($query_top);
 $stmt_top->bind_param("i", $seller_id);
 $stmt_top->execute();
 $recent_products = $stmt_top->get_result();
+
+// 5. Recent Activity (Latest 3 sales)
+$activity_query = "SELECT oi.*, p.Prod_Name, o.Order_PlacedAt 
+                   FROM order_item oi 
+                   JOIN product_variant pv ON oi.PVar_Id = pv.PVar_Id 
+                   JOIN product p ON pv.Prod_Id = p.Prod_Id 
+                   JOIN orders o ON oi.Order_Id = o.Order_Id
+                   WHERE p.Sell_Id = ? 
+                   ORDER BY o.Order_PlacedAt DESC LIMIT 3";
+$stmt_act = $conn->prepare($activity_query);
+$stmt_act->bind_param("i", $seller_id);
+$stmt_act->execute();
+$recent_activity = $stmt_act->get_result();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -57,20 +99,36 @@ $recent_products = $stmt_top->get_result();
             </div>
         </header>
 
+        <?php if ($low_stock_count > 0): ?>
+            <!-- LOW STOCK ALERT BANNER -->
+            <div style="background: #fff5f5; border: 1px solid #feb2b2; padding: 1.2rem; border-radius: 4px; margin-bottom: 2rem; display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <div style="background: #e53e3e; color: #fff; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                    </div>
+                    <div>
+                        <h4 style="font-size: 13px; font-weight: 700; color: #c53030; margin-bottom: 2px;">CRITICAL STOCK ALERT</h4>
+                        <p style="font-size: 11px; color: #742a2a; font-weight: 500;">You have <?= $low_stock_count ?> product(s) with critically low stock (less than 5 units left).</p>
+                    </div>
+                </div>
+                <a href="inventory.php" style="background: #c53030; color: #fff; text-decoration: none; font-size: 10px; font-weight: 700; padding: 10px 20px; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.1em;">RESTOCK NOW</a>
+            </div>
+        <?php endif; ?>
+
         <!-- METRICS -->
         <div class="metrics-grid">
             <div class="metric-card">
                 <p class="metric-title">TOTAL REVENUE</p>
-                <p class="metric-value">$128,430.00</p>
+                <p class="metric-value">$<?= number_format($total_revenue, 2) ?></p>
                 <p class="metric-sub trend-up">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
                     +12.5% vs Last Week
                 </p>
             </div>
             <div class="metric-card">
-                <p class="metric-title">ACTIVE ORDERS</p>
-                <p class="metric-value">1,248</p>
-                <p class="metric-sub">84 Pending Fulfillment</p>
+                <p class="metric-title">TOTAL ORDERS</p>
+                <p class="metric-value"><?= number_format($active_orders) ?></p>
+                <p class="metric-sub"><?= number_format($active_orders) ?> Active for fulfillment</p>
             </div>
             <div class="metric-card">
                 <p class="metric-title">CONVERSION RATE</p>
@@ -174,24 +232,24 @@ $recent_products = $stmt_top->get_result();
                 <div class="content-card">
                     <h3 class="card-title" style="margin-bottom: 1.5rem;">RECENT ACTIVITY</h3>
                     <div style="display:flex; flex-direction:column; gap:20px;">
-                        <div style="display:flex; gap:15px;">
-                            <div style="width:40px; height:40px; background:#f4f4f4; display:flex; align-items:center; justify-content:center;">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"></path><path d="M3 6h18"></path><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
+                        <?php if ($recent_activity->num_rows > 0): ?>
+                            <?php while($act = $recent_activity->fetch_assoc()): 
+                                $time_ago = floor((time() - strtotime($act['Order_PlacedAt'])) / 60);
+                                $time_str = $time_ago < 60 ? "$time_ago MINUTES AGO" : floor($time_ago/60) . " HOURS AGO";
+                            ?>
+                            <div style="display:flex; gap:15px;">
+                                <div style="width:40px; height:40px; background:#f4f4f4; display:flex; align-items:center; justify-content:center;">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"></path><path d="M3 6h18"></path><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
+                                </div>
+                                <div>
+                                    <p style="font-size:12px; margin:0;">New sale: "<?= htmlspecialchars($act['Prod_Name']) ?>" (x<?= $act['OdItm_Quantity'] ?>)</p>
+                                    <p style="font-size:10px; color:#999; margin:4px 0;"><?= strtoupper($time_str) ?></p>
+                                </div>
                             </div>
-                            <div>
-                                <p style="font-size:12px; margin:0;">Order #92843 placed for "Minimal Silk Slip Dress"</p>
-                                <p style="font-size:10px; color:#999; margin:4px 0;">2 MINUTES AGO</p>
-                            </div>
-                        </div>
-                        <div style="display:flex; gap:15px;">
-                            <div style="width:40px; height:40px; background:#000; color:#fff; display:flex; align-items:center; justify-content:center;">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"></path><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.27 6.96 8.73 5.05 8.73-5.05"></path><path d="M12 22.08V12"></path></svg>
-                            </div>
-                            <div>
-                                <p style="font-size:12px; margin:0;">Inventory Alert: "Oversized Blazer" is low on stock (2 units left)</p>
-                                <p style="font-size:10px; color:#999; margin:4px 0;">15 MINUTES AGO</p>
-                            </div>
-                        </div>
+                            <?php endwhile; ?>
+                        <?php else: ?>
+                            <p style="font-size: 11px; color: #999; font-style: italic;">No recent sales activity yet.</p>
+                        <?php endif; ?>
                     </div>
                     <button style="width:100%; margin-top:2rem; padding:10px; background:none; border:1px solid #eee; font-size:10px; font-weight:700; cursor:pointer;">VIEW ALL NOTIFICATIONS</button>
                 </div>

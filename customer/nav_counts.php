@@ -38,5 +38,5 @@ if (isset($_SESSION['user_id'])) {
 }
 
 // Global Nav Links
-$nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
+$nav_links = ["ALL PRODUCTS","WOMEN", "MEN", "KIDS", "LUXURY"];
 ?>

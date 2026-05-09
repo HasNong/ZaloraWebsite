@@ -6,6 +6,7 @@ if (isset($_SESSION['role'])) {
     if ($_SESSION['role'] === 'admin') { header('Location: ../admin/dashboard.php'); exit; }
     if ($_SESSION['role'] === 'seller') { header('Location: ../seller/dashboard.php'); exit; }
     if ($_SESSION['role'] === 'customer') { header('Location: ../customer/profile.php'); exit; }
+    if ($_SESSION['role'] === 'driver') { header('Location: ../driver/dashboard.php'); exit; }
 } else if (isset($_SESSION['user_id'])) { 
     // Fallback for old session format
     header('Location: ../customer/profile.php'); exit; 

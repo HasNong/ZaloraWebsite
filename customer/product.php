@@ -86,10 +86,31 @@ $product = [
     "images"      => $images,
 ];
 
-$complete_look = [
-    ["brand" => "ARCHIVE",      "name" => "Wide-Leg Wool Trouser",  "price" => 145.00, "img" => "https://images.unsplash.com/photo-1473966968600-fa801b869a1a?w=400&q=80"],
-    ["brand" => "ZALORA LUXURY","name" => "Pointed Leather Boot",   "price" => 210.00, "img" => "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&q=80"],
-];
+// 4. Fetch 'Complete the Look' (2 random products from SAME category)
+$look_query = "SELECT p.Prod_Id, p.Prod_Name, p.Prod_BasePrice, b.Brand_Name,
+               (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id AND PImg_IsPrimary = 1 LIMIT 1) as img
+               FROM PRODUCT p
+               JOIN BRAND b ON p.Brand_Id = b.Brand_Id
+               WHERE p.Ctgry_Id = ? AND p.Prod_Id != ? AND p.Prod_IsActive = 1
+               ORDER BY RAND() LIMIT 2";
+$stmt_look = $conn->prepare($look_query);
+$stmt_look->bind_param("ii", $product_data['Ctgry_Id'], $prod_id);
+$stmt_look->execute();
+$look_res = $stmt_look->get_result();
+
+$complete_look = [];
+while ($row = $look_res->fetch_assoc()) {
+    $img = $row['img'] ?? 'https://via.placeholder.com/400';
+    if ($img && strpos($img, 'http') === false) $img = '../' . $img;
+
+    $complete_look[] = [
+        "id"    => $row['Prod_Id'],
+        "brand" => $row['Brand_Name'],
+        "name"  => $row['Prod_Name'],
+        "price" => $row['Prod_BasePrice'],
+        "img"   => $img
+    ];
+}
 
 $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
 ?>
@@ -145,8 +166,8 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
     <!-- IMAGES -->
     <div class="image-panel <?= count($product['images']) === 1 ? 'single-image' : '' ?>">
         <?php if (count($product['images']) === 1): ?>
-            <div class="img-main" style="grid-column: 1 / -1; height: 100vh; position: sticky; top: 56px;">
-                <img src="<?= htmlspecialchars($product['images'][0]) ?>" alt="<?= htmlspecialchars($product['name']) ?>" style="height: 100%; object-position: center;"/>
+            <div class="img-main" style="grid-column: 1 / -1; height: 100vh; position: sticky; top: 56px; overflow: hidden;">
+                <img src="<?= htmlspecialchars($product['images'][0]) ?>" alt="<?= htmlspecialchars($product['name']) ?>" style="width: 100%; height: 100%; object-fit: cover; object-position: center;"/>
             </div>
         <?php else: ?>
             <div class="img-main"><img src="<?= htmlspecialchars($product['images'][0]) ?>" alt="<?= htmlspecialchars($product['name']) ?>"/></div>
@@ -239,14 +260,14 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
     <p class="section-label">Complete the Look</p>
     <div class="look-grid">
         <?php foreach ($complete_look as $item): ?>
-        <div class="look-card">
+        <a href="product.php?id=<?= $item['id'] ?>" class="look-card" style="text-decoration: none; color: inherit;">
             <div class="look-img-wrap">
                 <img src="<?= htmlspecialchars($item['img']) ?>" alt="<?= htmlspecialchars($item['name']) ?>" loading="lazy"/>
             </div>
             <p class="look-brand"><?= htmlspecialchars($item['brand']) ?></p>
             <p class="look-name"><?= htmlspecialchars($item['name']) ?></p>
             <p class="look-price">$<?= number_format($item['price'], 2) ?></p>
-        </div>
+        </a>
         <?php endforeach; ?>
     </div>
 </section>

@@ -136,8 +136,12 @@ $products = $stmt->get_result();
                         <td><span class="status-tag <?= $status_class ?>"><?= $status_label ?></span></td>
                         <td style="text-align: right; padding-right: 2rem;">
                             <div style="display:flex; justify-content: flex-end; gap: 15px;">
-                                <button style="background:none; border:none; cursor:pointer;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
-                                <button style="background:none; border:none; cursor:pointer;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></button>
+                                <a href="edit_product.php?id=<?= $p['Prod_Id'] ?>" style="color: inherit;" title="Edit Product">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                                </a>
+                                <button onclick="deleteProduct(<?= $p['Prod_Id'] ?>, '<?= addslashes($p['Prod_Name']) ?>')" style="background:none; border:none; cursor:pointer; color: #e74c3c;" title="Delete Product">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                                </button>
                             </div>
                         </td>
                     </tr>
@@ -171,6 +175,14 @@ $products = $stmt->get_result();
         </div>
     </footer>
 </div>
+
+<script>
+function deleteProduct(id, name) {
+    if (confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
+        window.location.href = `delete_product.php?id=${id}`;
+    }
+}
+</script>
 
 </body>
 </html>

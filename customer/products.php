@@ -183,15 +183,6 @@ $colors = [
         <?php endif; ?>
         <p class="shop-subtitle">Showing <?= count($products) ?> items</p>
     </div>
-    <div class="sort-wrap">
-        <label for="sort">Sort By:</label>
-        <select id="sort" name="sort">
-            <option>Relevance</option>
-            <option>Price: Low to High</option>
-            <option>Price: High to Low</option>
-            <option>Newest First</option>
-        </select>
-    </div>
 </div>
 
 <!-- ── SHOP LAYOUT ── -->
