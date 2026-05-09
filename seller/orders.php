@@ -11,7 +11,7 @@ $seller_id = $_SESSION['user_id'];
 $status_filter = strtoupper(isset($_GET['status']) ? $_GET['status'] : 'CONFIRMED');
 
 // 1. Get counts for tabs
-$counts = ['PENDING' => 0, 'CONFIRMED' => 0, 'SHIPPED' => 0, 'RETURNED' => 0, 'CANCELED' => 0];
+$counts = ['PENDING' => 0, 'CONFIRMED' => 0, 'SHIPPED' => 0, 'DELIVERED' => 0, 'RETURNED' => 0, 'CANCELED' => 0];
 $count_query = "SELECT o.Order_Status, COUNT(*) as cnt 
                 FROM ORDERS o 
                 JOIN ORDER_ITEM oi ON o.Order_Id = oi.Order_Id
@@ -31,12 +31,14 @@ while($row = $count_res->fetch_assoc()) {
 // 2. Fetch Filtered Orders
 $query = "SELECT o.Order_Id, o.Order_PlacedAt, o.Order_Status, c.Cust_FirstName, c.Cust_LastName,
                  oi.OdItm_Quantity, oi.OdItm_Subtotal, pv.PVar_Size, pv.PVar_Color,
-                 p.Prod_Name, (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id AND PImg_IsPrimary = 1 LIMIT 1) as img
+                 p.Prod_Name, (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id AND PImg_IsPrimary = 1 LIMIT 1) as img,
+                 s.Ship_ProofImg
           FROM ORDERS o
           JOIN CUSTOMER c ON o.Cust_Id = c.Cust_Id
           JOIN ORDER_ITEM oi ON o.Order_Id = oi.Order_Id
           JOIN PRODUCT_VARIANT pv ON oi.PVar_Id = pv.PVar_Id
           JOIN PRODUCT p ON pv.Prod_Id = p.Prod_Id
+          LEFT JOIN shipment s ON o.Order_Id = s.Order_Id
           WHERE p.Sell_Id = ? AND UPPER(o.Order_Status) = ?
           ORDER BY o.Order_PlacedAt DESC";
 
@@ -130,6 +132,7 @@ $online_drivers = $conn->query("SELECT Driv_Id, Driv_FirstName, Driv_LastName, D
                     <a href="?status=PENDING" class="tab <?= $status_filter == 'PENDING' ? 'active' : '' ?>">Pending (<?= $counts['PENDING'] ?>)</a>
                     <a href="?status=CONFIRMED" class="tab <?= $status_filter == 'CONFIRMED' ? 'active' : '' ?>">Confirmed (<?= $counts['CONFIRMED'] ?>)</a>
                     <a href="?status=SHIPPED" class="tab <?= $status_filter == 'SHIPPED' ? 'active' : '' ?>">Shipped (<?= $counts['SHIPPED'] ?>)</a>
+                    <a href="?status=DELIVERED" class="tab <?= $status_filter == 'DELIVERED' ? 'active' : '' ?>">Delivered (<?= $counts['DELIVERED'] ?>)</a>
                     <a href="?status=RETURNED" class="tab <?= $status_filter == 'RETURNED' ? 'active' : '' ?>">Returned (<?= $counts['RETURNED'] ?>)</a>
                     <a href="?status=CANCELED" class="tab <?= $status_filter == 'CANCELED' ? 'active' : '' ?>">Canceled (<?= $counts['CANCELED'] ?>)</a>
                 </div>
@@ -183,6 +186,9 @@ $online_drivers = $conn->query("SELECT Driv_Id, Driv_FirstName, Driv_LastName, D
                                 <div class="info-block">
                                     <label>STATUS</label>
                                     <span><i class="status-dot <?= $status_color ?>"></i><span class="status-text"><?= $status ?></span></span>
+                                    <?php if ($o['Ship_ProofImg']): ?>
+                                        <a href="../<?= htmlspecialchars($o['Ship_ProofImg']) ?>" target="_blank" style="display: block; font-size: 9px; color: #000; font-weight: 700; margin-top: 5px; text-decoration: underline;">VIEW PROOF</a>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                             <div class="order-actions" style="display: flex; gap: 10px; align-items: center;">

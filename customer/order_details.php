@@ -10,9 +10,10 @@ if (!isset($_SESSION['user_id'])) {
 $order_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 $cust_id = $_SESSION['user_id'];
 
-// 1. Fetch Order Header + Address + Driver Info
+// 1. Fetch Order Header + Address + Driver Info + Proof
 $order_query = "SELECT o.*, a.Addrs_RcpntName, a.Addrs_Street, a.Addrs_City, a.Addrs_ZipCode,
-                       d.Driv_FirstName, d.Driv_LastName, d.Driv_VehicleType, d.Driv_Phone
+                       d.Driv_FirstName, d.Driv_LastName, d.Driv_VehicleType, d.Driv_Phone,
+                       s.Ship_ProofImg, s.Ship_DeliveredAt
                 FROM ORDERS o
                 JOIN ADDRESS a ON o.Addrs_Id = a.Addrs_id
                 LEFT JOIN shipment s ON o.Order_Id = s.Order_Id
@@ -28,7 +29,7 @@ if (!$order) {
 }
 
 // 2. Fetch Order Items
-$items_query = "SELECT oi.*, p.Prod_Name, pv.PVar_Size, pv.PVar_Color,
+$items_query = "SELECT oi.*, p.Prod_Name, p.Prod_Id AS ProductId, pv.PVar_Size, pv.PVar_Color,
                 (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id AND PImg_IsPrimary = 1 LIMIT 1) as img
                 FROM ORDER_ITEM oi
                 JOIN PRODUCT_VARIANT pv ON oi.PVar_Id = pv.PVar_Id
@@ -51,12 +52,17 @@ if (isset($_POST['submit_review'])) {
     $res_rid = $conn->query("SELECT MAX(Rview_Id) as max_id FROM review");
     $next_rid = ($res_rid->fetch_assoc()['max_id'] ?? 0) + 1;
 
-    $ins_rev = $conn->prepare("INSERT INTO review (Rview_Id, Prod_Id, Cust_Id, OdItm_Id, Rview_Rating, Rview_Txt, Rview_PicUrl, Rview_IsApproved, Rview_CreatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW())");
+    // Insert review with IsApproved = 0 (Requires Admin Review)
+    $ins_rev = $conn->prepare("INSERT INTO review (Rview_Id, Prod_Id, Cust_Id, OdItm_Id, Rview_Rating, Rview_Txt, Rview_PicUrl, Rview_IsApproved, Rview_CreatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NOW())");
     $ins_rev->bind_param("iiiiiss", $next_rid, $prod_id, $cust_id, $oditm_id, $rating, $comment, $pic_url);
     $ins_rev->execute();
     header("Location: order_details.php?id=$order_id&review=success");
     exit;
 }
+
+// 6. Check for existing Return Request
+$res_ret = $conn->query("SELECT Rtrn_Status FROM return_request rr JOIN ORDER_ITEM oi ON rr.OdItm_Id = oi.OdItm_Id WHERE oi.Order_Id = $order_id LIMIT 1");
+$return_data = $res_ret->fetch_assoc();
 
 $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
 ?>
@@ -142,11 +148,11 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
                 <p class="item-variant"><?= $item['PVar_Color'] ? $item['PVar_Color'] . ' • ' : '' ?>Size <?= $item['PVar_Size'] ?></p>
                 <p class="item-variant">Quantity: <?= $item['OdItm_Quantity'] ?></p>
                 
-                <?php if ($order['Order_Status'] === 'DELIVERED'): ?>
+                <?php if (strtoupper($order['Order_Status']) === 'DELIVERED'): ?>
                     <?php if ($is_reviewed): ?>
                         <span style="font-size: 10px; color: #27ae60; font-weight: 700; text-transform: uppercase;">✓ Reviewed</span>
                     <?php else: ?>
-                        <button class="btn-review" onclick="openReviewModal(<?= $item['OdItm_Id'] ?>, <?= $item['Prod_Id'] ?>, '<?= addslashes($item['Prod_Name']) ?>')">Write Review</button>
+                        <button class="btn-review" onclick="openReviewModal(<?= $item['OdItm_Id'] ?>, <?= $item['ProductId'] ?>, '<?= addslashes($item['Prod_Name']) ?>')">Write Review</button>
                     <?php endif; ?>
                 <?php endif; ?>
             </div>
@@ -172,6 +178,20 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
                 <span>$<?= number_format($order['Order_TotalAmnt'], 2) ?></span>
             </div>
         </div>
+
+        <?php if ($order['Order_Status'] === 'DELIVERED'): ?>
+            <div style="margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h3 style="font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 5px; letter-spacing: 0.1em;">Need a Return?</h3>
+                    <p style="font-size: 11px; color: #999;">Eligible for return until <?= date('M d, Y', strtotime(($order['Ship_DeliveredAt'] ?? date('Y-m-d')) . ' + 30 days')) ?></p>
+                </div>
+                <?php if ($return_data): ?>
+                    <span style="background: #eee; padding: 12px 25px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;">Return: <?= $return_data['Rtrn_Status'] ?></span>
+                <?php else: ?>
+                    <a href="request_return.php?id=<?= $order_id ?>" style="background: #000; color: #fff; text-decoration: none; padding: 12px 25px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;">Initiate Return</a>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
     </div>
 
     <div class="card">
@@ -183,6 +203,16 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
             <p>Singapore</p>
         </div>
     </div>
+
+    <?php if ($order['Ship_ProofImg']): ?>
+        <div class="card">
+            <h2 class="card-title">Proof of Delivery</h2>
+            <div style="text-align: center;">
+                <img src="../<?= htmlspecialchars($order['Ship_ProofImg']) ?>" style="max-width: 100%; border: 1px solid #eee;" alt="Delivery Proof">
+                <p style="font-size: 11px; color: #999; margin-top: 10px; text-transform: uppercase; font-weight: 700;">Captured by driver upon handover</p>
+            </div>
+        </div>
+    <?php endif; ?>
 
     <?php if ($order['Driv_FirstName']): ?>
         <div class="card" style="border-left: 5px solid #000;">

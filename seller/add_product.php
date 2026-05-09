@@ -32,8 +32,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $max_res = $conn->query("SELECT MAX(Prod_Id) as max_id FROM PRODUCT");
         $prod_id = ($max_res->fetch_assoc()['max_id'] ?? 0) + 1;
 
-        // INSERT into PRODUCT (Price is 'd' for double/decimal)
-        $stmt = $conn->prepare("INSERT INTO PRODUCT (Prod_Id, Sell_Id, Brand_Id, Ctgry_Id, Prod_Name, Prod_Desc, Prod_BasePrice, Prod_IsActive, Prod_CreatedAt, Prod_UpdatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())");
+        // INSERT into PRODUCT (Price is 'd' for double/decimal) - Prod_IsActive set to 0 for admin approval
+        $stmt = $conn->prepare("INSERT INTO PRODUCT (Prod_Id, Sell_Id, Brand_Id, Ctgry_Id, Prod_Name, Prod_Desc, Prod_BasePrice, Prod_IsActive, Prod_CreatedAt, Prod_UpdatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW())");
         $stmt->bind_param("iiiissd", $prod_id, $seller_id, $brand_id, $ctgry_id, $name, $desc, $price);
         
         if ($stmt->execute()) {
@@ -85,7 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // Success Redirect
-            $_SESSION['success_msg'] = "Product '$name' has been successfully listed!";
+            $_SESSION['success_msg'] = "Product '$name' has been successfully submitted and is pending admin approval!";
             header("Location: inventory.php");
             exit;
         } else {

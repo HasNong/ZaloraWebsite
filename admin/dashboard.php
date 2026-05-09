@@ -19,6 +19,33 @@ $recent_orders = $conn->query("SELECT o.*, c.Cust_Firstname, c.Cust_Lastname
                               JOIN CUSTOMER c ON o.Cust_Id = c.Cust_Id 
                               ORDER BY o.Order_PlacedAt DESC LIMIT 5");
 
+// Daily Sales (Last 7 Days)
+$sales_query = "SELECT DATE(Order_PlacedAt) as date, SUM(Order_TotalAmnt) as total 
+                FROM ORDERS 
+                WHERE Order_PlacedAt >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+                AND Order_Status != 'CANCELLED'
+                GROUP BY DATE(Order_PlacedAt)
+                ORDER BY date ASC";
+$sales_res = $conn->query($sales_query);
+$sales_data = [];
+$sales_labels = [];
+while($s = $sales_res->fetch_assoc()) {
+    $sales_labels[] = date('M d', strtotime($s['date']));
+    $sales_data[] = $s['total'];
+}
+
+// Category Distribution
+$cat_query = "SELECT c.Ctgry_Name, COUNT(p.Prod_Id) as count 
+              FROM CATEGORY c 
+              JOIN PRODUCT p ON c.Ctgry_Id = p.Ctgry_Id 
+              GROUP BY c.Ctgry_Id";
+$cat_res = $conn->query($cat_query);
+$cat_data = [];
+$cat_labels = [];
+while($c = $cat_res->fetch_assoc()) {
+    $cat_labels[] = $c['Ctgry_Name'];
+    $cat_data[] = $c['count'];
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -28,6 +55,7 @@ $recent_orders = $conn->query("SELECT o.*, c.Cust_Firstname, c.Cust_Lastname
     <title>Admin Dashboard - Zalora</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/admin.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
@@ -59,6 +87,17 @@ $recent_orders = $conn->query("SELECT o.*, c.Cust_Firstname, c.Cust_Lastname
         <div class="stat-card">
             <div class="stat-label">Live Products</div>
             <div class="stat-value"><?= $total_products ?></div>
+        </div>
+    </div>
+
+    <div class="charts-grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: 30px; margin-bottom: 40px;">
+        <div class="stat-card">
+            <h3 class="section-title" style="margin-top: 0; margin-bottom: 20px;">Revenue Trend (Last 7 Days)</h3>
+            <canvas id="salesChart" height="120"></canvas>
+        </div>
+        <div class="stat-card">
+            <h3 class="section-title" style="margin-top: 0; margin-bottom: 20px;">Catalog by Category</h3>
+            <canvas id="catChart"></canvas>
         </div>
     </div>
 
@@ -103,5 +142,53 @@ $recent_orders = $conn->query("SELECT o.*, c.Cust_Firstname, c.Cust_Lastname
     </div>
 </div>
 
+<script>
+    // Sales Chart
+    const ctxSales = document.getElementById('salesChart').getContext('2d');
+    new Chart(ctxSales, {
+        type: 'line',
+        data: {
+            labels: <?= json_encode($sales_labels) ?>,
+            datasets: [{
+                label: 'Daily Revenue ($)',
+                data: <?= json_encode($sales_data) ?>,
+                borderColor: '#000',
+                backgroundColor: 'rgba(0,0,0,0.05)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, grid: { color: '#f5f5f5' } },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+
+    // Category Chart
+    const ctxCat = document.getElementById('catChart').getContext('2d');
+    new Chart(ctxCat, {
+        type: 'doughnut',
+        data: {
+            labels: <?= json_encode($cat_labels) ?>,
+            datasets: [{
+                data: <?= json_encode($cat_data) ?>,
+                backgroundColor: ['#000', '#333', '#666', '#999', '#ccc'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } }
+            },
+            cutout: '70%'
+        }
+    });
+</script>
 </body>
 </html>

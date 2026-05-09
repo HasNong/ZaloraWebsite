@@ -46,16 +46,20 @@ $stmt_next->bind_param("i", $driver_id);
 $stmt_next->execute();
 $next_stop = $stmt_next->get_result()->fetch_assoc();
 
-// Mock Data if empty
-if (!$next_stop) {
-    $next_stop = [
-        'Order_Id' => 'ZL-EMPTY',
-        'Addrs_Street' => 'Go Online to see assignments',
-        'Addrs_City' => 'Waiting...',
-        'Addrs_ZipCode' => '0000',
-        'Addrs_RcpntName' => 'No Active Orders'
     ];
 }
+
+// 5. Fetch Approved Returns for Pick-up
+$query_returns = "SELECT rr.*, a.Addrs_Street, a.Addrs_City, a.Addrs_RcpntName, p.Prod_Name
+                  FROM return_request rr
+                  JOIN ORDER_ITEM oi ON rr.OdItm_Id = oi.OdItm_Id
+                  JOIN ORDERS o ON oi.Order_Id = o.Order_Id
+                  JOIN ADDRESS a ON o.Addrs_Id = a.Addrs_Id
+                  JOIN PRODUCT_VARIANT pv ON oi.PVar_Id = pv.PVar_Id
+                  JOIN PRODUCT p ON pv.Prod_Id = p.Prod_Id
+                  WHERE rr.Rtrn_Status = 'APPROVED'
+                  LIMIT 5";
+$approved_returns = $conn->query($query_returns);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -150,40 +154,55 @@ if (!$next_stop) {
                         <p class="ns-notes">Gate code required: <?= $next_stop['Addrs_ZipCode'] ?>. Please leave at front desk if security is present.</p>
                         
                         <div class="ns-actions">
-                            <form action="driver_handler.php" method="POST" style="flex-grow: 1; display: flex; gap: 15px;">
+                            <form action="driver_handler.php" method="POST" enctype="multipart/form-data" style="flex-grow: 1; display: flex; flex-direction: column; gap: 15px;">
                                 <input type="hidden" name="action" value="complete_delivery">
                                 <input type="hidden" name="order_id" value="<?= $next_stop['Order_Id'] ?>">
-                                <button type="button" class="btn-nav" onclick="alert('Starting Navigation...')">NAVIGATE</button>
-                                <button type="submit" class="btn-delivered">MARK AS DELIVERED</button>
+                                
+                                <div style="background: #f9f9f9; border: 1px dashed #ccc; padding: 15px; text-align: center;">
+                                    <label style="font-size: 10px; font-weight: 800; color: #999; display: block; margin-bottom: 10px; text-transform: uppercase;">UPLOAD PROOF OF DELIVERY (PHOTO)</label>
+                                    <input type="file" name="proof_img" accept="image/*" required style="font-size: 11px; width: 100%;">
+                                </div>
+
+                                <div style="display: flex; gap: 15px;">
+                                    <button type="button" class="btn-nav" onclick="alert('Starting Navigation...')">NAVIGATE</button>
+                                    <button type="submit" class="btn-delivered">MARK AS DELIVERED</button>
+                                </div>
                             </form>
-                            <button class="btn-call">
+                            <button class="btn-call" style="align-self: flex-end; height: 50px; margin-bottom: 3px;">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.88 12.88 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
                             </button>
                         </div>
                     </div>
                 </div>
 
-                <div style="margin-top:40px;">
-                    <div class="payout-row" style="color:#ccc; opacity:0.6;">
-                        <div class="payout-info">
-                            <p style="margin-bottom:5px;">ETA 14:20</p>
-                            <h4>128 Oak Avenue, Apt 4C</h4>
+                <div style="margin-top:60px;">
+                    <header class="section-header" style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 20px;">
+                        <h2 class="page-title">RETURN PICK-UPS</h2>
+                        <span style="font-size:11px; font-weight:700; color:#999; text-transform:uppercase;"><?= $approved_returns->num_rows ?> ASSIGNMENTS</span>
+                    </header>
+
+                    <?php if ($approved_returns->num_rows > 0): ?>
+                        <?php while($ret = $approved_returns->fetch_assoc()): ?>
+                            <div class="payout-row" style="background: #fdf2f2; padding: 25px; border: 1px solid #fee2e2; margin-bottom: 15px;">
+                                <div class="payout-info">
+                                    <p style="margin-bottom:5px; color: #dc2626;">APPROVED RETURN #<?= $ret['Rtrn_Id'] ?></p>
+                                    <h4 style="font-size: 16px;"><?= $ret['Addrs_Street'] ?></h4>
+                                    <p style="font-size: 11px; margin-top: 5px;">Item: <?= htmlspecialchars($ret['Prod_Name']) ?> • From: <?= htmlspecialchars($ret['Addrs_RcpntName']) ?></p>
+                                </div>
+                                <div style="display:flex; align-items:center;">
+                                    <form action="driver_handler.php" method="POST">
+                                        <input type="hidden" name="action" value="pickup_return">
+                                        <input type="hidden" name="rtrn_id" value="<?= $ret['Rtrn_Id'] ?>">
+                                        <button type="submit" style="background: #000; color: #fff; border: none; padding: 12px 20px; font-weight: 700; font-size: 10px; text-transform: uppercase; cursor: pointer;">CONFIRM PICK-UP</button>
+                                    </form>
+                                </div>
+                            </div>
+                        <?php endwhile; ?>
+                    <?php else: ?>
+                        <div style="padding: 40px; text-align: center; background: #fafafa; border: 1px dashed #ddd; color: #999; font-size: 13px;">
+                            No approved returns for pick-up at this time.
                         </div>
-                        <div style="display:flex; align-items:center; gap:10px;">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
-                            <span style="font-size:11px; font-weight:700;">2 ITEMS</span>
-                        </div>
-                    </div>
-                    <div class="payout-row" style="color:#ccc; opacity:0.6;">
-                        <div class="payout-info">
-                            <p style="margin-bottom:5px;">ETA 14:45</p>
-                            <h4>The Collective Hub, Ground Floor</h4>
-                        </div>
-                        <div style="display:flex; align-items:center; gap:10px;">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
-                            <span style="font-size:11px; font-weight:700;">1 ITEM</span>
-                        </div>
-                    </div>
+                    <?php endif; ?>
                 </div>
             </div>
 

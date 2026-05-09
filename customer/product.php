@@ -112,6 +112,25 @@ while ($row = $look_res->fetch_assoc()) {
     ];
 }
 
+// 5. Fetch Reviews & Average Rating
+$reviews_query = "SELECT r.*, c.Cust_FirstName, c.Cust_LastName 
+                  FROM review r 
+                  JOIN customer c ON r.Cust_Id = c.Cust_Id 
+                  WHERE r.Prod_Id = ? AND r.Rview_IsApproved = 1 
+                  ORDER BY r.Rview_CreatedAt DESC";
+$stmt_rev = $conn->prepare($reviews_query);
+$stmt_rev->bind_param("i", $prod_id);
+$stmt_rev->execute();
+$reviews_res = $stmt_rev->get_result();
+
+$all_reviews = [];
+$total_stars = 0;
+while ($rev = $reviews_res->fetch_assoc()) {
+    $all_reviews[] = $rev;
+    $total_stars += $rev['Rview_Rating'];
+}
+$avg_rating = count($all_reviews) > 0 ? round($total_stars / count($all_reviews), 1) : 0;
+
 $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
 ?>
 <!DOCTYPE html>
@@ -180,6 +199,15 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
     <div class="info-panel">
         <p class="product-collection"><?= htmlspecialchars($product['collection']) ?></p>
         <h1 class="product-name"><?= htmlspecialchars($product['name']) ?></h1>
+        <div class="product-rating" style="display: flex; align-items: center; gap: 8px; margin: 10px 0;">
+            <div style="display: flex; color: #000; font-size: 14px;">
+                <?php for($i=1; $i<=5; $i++): ?>
+                    <?= $i <= round($avg_rating) ? '★' : '☆' ?>
+                <?php endfor; ?>
+            </div>
+            <span style="font-size: 11px; font-weight: 700; color: #000; border-bottom: 1px solid #000;"><?= count($all_reviews) ?> REVIEWS</span>
+            <span style="font-size: 11px; font-weight: 500; color: #999; margin-left: 5px;">Avg. <?= $avg_rating ?></span>
+        </div>
         <p class="product-price">$<?= number_format($product['price'], 2) ?></p>
 
         <!-- Form for Add to Bag -->
@@ -209,7 +237,7 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
             <?php if (!empty($product['sizes'])): ?>
             <div class="size-header">
                 <p class="option-label" style="margin-bottom:0;">Select Size</p>
-                <span class="size-guide">Size Guide</span>
+                <span class="size-guide" onclick="openSizeGuide()">Size Guide</span>
             </div>
             <div class="size-grid">
                 <?php foreach ($product['sizes'] as $i => $size): ?>
@@ -281,6 +309,110 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
     </div>
     <img class="philosophy-img" src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80" alt="Archival Philosophy" loading="lazy"/>
 </div>
+
+<!-- CUSTOMER REVIEWS (FR-19) -->
+<section class="customer-reviews" style="max-width: 1200px; margin: 80px auto; padding: 0 40px; border-top: 1px solid #eee; padding-top: 60px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 40px;">
+        <h2 style="font-size: 20px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;">Customer Reviews</h2>
+        <span style="font-size: 11px; font-weight: 800; color: #999; text-transform: uppercase; letter-spacing: 0.1em;"><?= count($all_reviews) ?> SHARED FEEDBACK</span>
+    </div>
+
+    <div class="reviews-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 40px;">
+        <?php if (count($all_reviews) > 0): ?>
+            <?php foreach ($all_reviews as $rev): ?>
+            <div class="review-card" style="border-bottom: 1px solid #f9f9f9; padding-bottom: 30px;">
+                <div style="display: flex; color: #000; font-size: 12px; margin-bottom: 10px; gap: 2px;">
+                    <?php for($i=1; $i<=5; $i++): ?>
+                        <?= $i <= $rev['Rview_Rating'] ? '★' : '☆' ?>
+                    <?php endfor; ?>
+                </div>
+                <h4 style="font-size: 13px; font-weight: 700; margin-bottom: 8px; text-transform: uppercase;"><?= htmlspecialchars($rev['Cust_FirstName'] . ' ' . substr($rev['Cust_LastName'], 0, 1)) ?>.</h4>
+                <p style="font-size: 13px; color: #444; line-height: 1.6; margin-bottom: 15px; font-weight: 400;"><?= htmlspecialchars($rev['Rview_Txt']) ?></p>
+                <span style="font-size: 10px; color: #999; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;"><?= date('M d, Y', strtotime($rev['Rview_CreatedAt'])) ?></span>
+                
+                <?php if ($rev['Rview_PicUrl']): 
+                    $rev_img = $rev['Rview_PicUrl'];
+                    if (strpos($rev_img, 'http') === false && strpos($rev_img, '../') !== 0) {
+                        $rev_img = '../' . $rev_img;
+                    }
+                ?>
+                    <div style="margin-top: 15px;">
+                        <img src="<?= htmlspecialchars($rev_img) ?>" style="width: 100px; height: 100px; object-fit: cover; border: 1px solid #eee; cursor: pointer;" alt="Customer Photo" onclick="window.open(this.src)">
+                    </div>
+                <?php endif; ?>
+            </div>
+            <?php endforeach; ?>
+        <?php else: ?>
+            <div style="grid-column: 1 / -1; text-align: center; padding: 60px; background: #fafafa; color: #999; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase;">
+                No reviews yet. Be the first to share your experience!
+            </div>
+        <?php endif; ?>
+    </div>
+</section>
+
+<!-- SIZE GUIDE MODAL -->
+<div id="sizeGuideModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 600px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+            <h2 style="font-size: 18px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;">Size Guide</h2>
+            <span style="cursor: pointer; font-size: 24px;" onclick="closeSizeGuide()">&times;</span>
+        </div>
+        <p style="font-size: 13px; color: #666; margin-bottom: 20px;">All measurements are in centimeters (cm). Use this guide to find your perfect fit.</p>
+        <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+            <thead>
+                <tr style="border-bottom: 1px solid #000; text-transform: uppercase; font-weight: 700;">
+                    <th style="padding: 10px 0;">Size</th>
+                    <th>Chest</th>
+                    <th>Waist</th>
+                    <th>Hips</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 15px 0; font-weight: 700;">XS</td>
+                    <td>82-86</td>
+                    <td>64-68</td>
+                    <td>90-94</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 15px 0; font-weight: 700;">S</td>
+                    <td>86-90</td>
+                    <td>68-72</td>
+                    <td>94-98</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 15px 0; font-weight: 700;">M</td>
+                    <td>90-94</td>
+                    <td>72-76</td>
+                    <td>98-102</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 15px 0; font-weight: 700;">L</td>
+                    <td>94-100</td>
+                    <td>76-82</td>
+                    <td>102-108</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 15px 0; font-weight: 700;">XL</td>
+                    <td>100-106</td>
+                    <td>82-88</td>
+                    <td>108-114</td>
+                </tr>
+            </tbody>
+        </table>
+        <div style="margin-top: 30px; background: #fafafa; padding: 20px; font-size: 11px; line-height: 1.6; color: #666;">
+            <strong>HOW TO MEASURE:</strong><br>
+            <strong>CHEST:</strong> Measure around the fullest part of your chest, keeping the tape horizontal.<br>
+            <strong>WAIST:</strong> Measure around the narrowest part (typically where your body bends side to side), keeping the tape horizontal.<br>
+            <strong>HIPS:</strong> Measure around the fullest part of your hips, keeping the tape horizontal.
+        </div>
+    </div>
+</div>
+
+<style>
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; }
+.modal-content { background: #fff; padding: 40px; position: relative; max-height: 90vh; overflow-y: auto; }
+</style>
 
 <!-- FOOTER -->
 <footer>
@@ -360,6 +492,22 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
         const isOpen = body.classList.contains('open');
         body.classList.toggle('open', !isOpen);
         icon.textContent = isOpen ? '+' : '−';
+    }
+
+    function openSizeGuide() {
+        document.getElementById('sizeGuideModal').style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeSizeGuide() {
+        document.getElementById('sizeGuideModal').style.display = 'none';
+        document.body.style.overflow = 'auto';
+    }
+
+    window.onclick = function(event) {
+        if (event.target == document.getElementById('sizeGuideModal')) {
+            closeSizeGuide();
+        }
     }
 </script>
 </body>
