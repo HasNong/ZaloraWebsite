@@ -75,13 +75,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $v_color = $v['color'] ?? 'Default';
                 $v_stock = intval($v['stock'] ?? 0);
 
-                $max_var = $conn->query("SELECT MAX(PVar_Id) as max_id FROM PRODUCT_VARIANT");
+                $max_var = $conn->query("SELECT MAX(PVar_Id) as max_id FROM product_variant");
                 $pvar_id = ($max_var->fetch_assoc()['max_id'] ?? 0) + 1;
                 
                 $sku = "SKU-" . $prod_id . "-" . strtoupper(substr($v_color, 0, 3)) . "-" . strtoupper($v_size);
-                $var_stmt = $conn->prepare("INSERT INTO PRODUCT_VARIANT (PVar_Id, Prod_Id, PVar_Sku, PVar_Size, PVar_Color, PVar_StockQuantity) VALUES (?, ?, ?, ?, ?, ?)");
+                $var_stmt = $conn->prepare("INSERT INTO product_variant (PVar_Id, Prod_Id, PVar_Sku, PVar_Size, PVar_Color, PVar_StockQuantity) VALUES (?, ?, ?, ?, ?, ?)");
                 $var_stmt->bind_param("iisssi", $pvar_id, $prod_id, $sku, $v_size, $v_color, $v_stock);
                 $var_stmt->execute();
+            }
+
+            // Handle Product Tags
+            $tags_raw = $_POST['tags'] ?? '';
+            if (!empty($tags_raw)) {
+                $tags_array = explode(',', $tags_raw);
+                foreach ($tags_array as $t_name) {
+                    $t_name = trim($t_name);
+                    if (empty($t_name)) continue;
+                    
+                    // Check if tag exists
+                    $t_stmt = $conn->prepare("SELECT Tag_Id FROM product_tag WHERE Tag_Name = ?");
+                    $t_stmt->bind_param("s", $t_name);
+                    $t_stmt->execute();
+                    $t_res = $t_stmt->get_result();
+                    
+                    if ($t_res->num_rows > 0) {
+                        $tag_id = $t_res->fetch_assoc()['Tag_Id'];
+                    } else {
+                        $max_t = $conn->query("SELECT MAX(Tag_Id) as max_id FROM product_tag");
+                        $tag_id = ($max_t->fetch_assoc()['max_id'] ?? 0) + 1;
+                        $ins_t = $conn->prepare("INSERT INTO product_tag (Tag_Id, Tag_Name) VALUES (?, ?)");
+                        $ins_t->bind_param("is", $tag_id, $t_name);
+                        $ins_t->execute();
+                    }
+                    
+                    // Map tag to product
+                    $conn->query("INSERT INTO product_tag_map (Prod_Id, Tag_Id) VALUES ($prod_id, $tag_id)");
+                }
             }
 
             // Success Redirect
@@ -201,6 +230,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <?php endwhile; ?>
                         </select>
                     </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Product Tags (Comma separated)</label>
+                    <input type="text" name="tags" placeholder="e.g. Summer, Linen, Casual, Vintage">
                 </div>
 
                 <div style="margin-bottom: 2rem; border: 1px solid #eee; padding: 1.5rem; background: #fafafa;">

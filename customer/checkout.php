@@ -28,7 +28,8 @@ if ($subtotal == 0) {
 }
 
 $tax = round($subtotal * 0.08, 2);
-$total = $subtotal + $tax;
+$shipping_fee = ($subtotal > 100) ? 0 : 5.00;
+$total = $subtotal + $tax + $shipping_fee;
 
 // 2. Fetch Customer Balance & Address
 $cust_query = "SELECT c.Cust_Balance, c.Cust_Firstname, c.Cust_Lastname, a.* 
@@ -71,7 +72,8 @@ if (isset($_POST['place_order'])) {
                 $addr_id = $next_id;
             }
 
-            // B. Calculate Discount
+            // B. Calculate Fees & Discount
+            $shipping_fee = ($subtotal > 100) ? 0 : 5.00;
             $discount = 0;
             $applied_coupon_id = null;
             $applied_voucher_id = null;
@@ -98,7 +100,7 @@ if (isset($_POST['place_order'])) {
                 }
             }
 
-            $final_total = max(0, $total - $discount);
+            $final_total = max(0, ($subtotal + $tax + $shipping_fee) - $discount);
 
             // C. Deduct Balance
             $conn->query("UPDATE CUSTOMER SET Cust_Balance = Cust_Balance - $final_total WHERE Cust_Id = $cust_id");
@@ -107,9 +109,16 @@ if (isset($_POST['place_order'])) {
             $res_oid = $conn->query("SELECT MAX(Order_Id) as max_id FROM ORDERS");
             $order_id = ($res_oid->fetch_assoc()['max_id'] ?? 0) + 1;
 
-            $ord_stmt = $conn->prepare("INSERT INTO ORDERS (Order_Id, Cust_Id, Addrs_Id, Order_Status, Order_TotalAmnt, Order_ShipFee, Order_PlacedAt, Order_UpdatedAt) VALUES (?, ?, ?, 'PENDING', ?, 0, NOW(), NOW())");
-            $ord_stmt->bind_param("iiid", $order_id, $cust_id, $addr_id, $final_total);
+            $ord_stmt = $conn->prepare("INSERT INTO ORDERS (Order_Id, Cust_Id, Addrs_Id, Order_Status, Order_TotalAmnt, Order_ShipFee, Order_PlacedAt, Order_UpdatedAt) VALUES (?, ?, ?, 'PENDING', ?, ?, NOW(), NOW())");
+            $ord_stmt->bind_param("iiidd", $order_id, $cust_id, $addr_id, $final_total, $shipping_fee);
             $ord_stmt->execute();
+
+            // D2. Create Payment Record
+            $res_pid = $conn->query("SELECT MAX(Pymnt_Id) as max_id FROM payment");
+            $pymnt_id = ($res_pid->fetch_assoc()['max_id'] ?? 0) + 1;
+            $pymnt_stmt = $conn->prepare("INSERT INTO payment (Pymnt_Id, Order_Id, Pymnt_Method, Pymnt_Status, Pymnt_Amount, Pymnt_CreatedAt) VALUES (?, ?, 'BANK_TRANSFER', 'PAID', ?, NOW())");
+            $pymnt_stmt->bind_param("iid", $pymnt_id, $order_id, $final_total);
+            $pymnt_stmt->execute();
 
             // E. Record Coupon Usage
             if ($applied_coupon_id) {
@@ -232,7 +241,7 @@ if (isset($_POST['place_order'])) {
             </div>
             <div class="summary-row">
                 <span>Shipping</span>
-                <span style="color: green; font-weight: 700;">FREE</span>
+                <span style="color: <?= $shipping_fee == 0 ? 'green' : '#000' ?>; font-weight: 700;"><?= $shipping_fee == 0 ? 'FREE' : '$' . number_format($shipping_fee, 2) ?></span>
             </div>
             <div class="summary-row" id="discount-row" style="display: none; color: #d00; font-weight: 600;">
                 <span>Promo Discount</span>
@@ -263,6 +272,7 @@ if (isset($_POST['place_order'])) {
 <script>
 const originalTotal = <?= $total ?>;
 const subtotal = <?= $subtotal ?>;
+const shippingFee = <?= $shipping_fee ?>;
 
 function applyPromo() {
     const code = document.getElementById('promo-code').value.trim();

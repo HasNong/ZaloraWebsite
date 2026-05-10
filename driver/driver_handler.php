@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $stmt1->execute();
             
             // 2. Update Order
-            $stmt2 = $conn->prepare("UPDATE ORDERS SET Order_Status = 'DELIVERED' WHERE Order_Id = ?");
+            $stmt2 = $conn->prepare("UPDATE orders SET Order_Status = 'DELIVERED', Order_UpdatedAt = NOW() WHERE Order_Id = ?");
             $stmt2->bind_param("s", $order_id);
             $stmt2->execute();
             
@@ -49,9 +49,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $stmt3 = $conn->prepare("UPDATE driver SET Driv_Balance = Driv_Balance + 15.00 WHERE Driv_Id = ?");
             $stmt3->bind_param("i", $driver_id);
             $stmt3->execute();
+
+            // 4. Award Loyalty Points & Send Notification
+            require_once '../config/functions.php';
+            $ord_res = $conn->query("SELECT Cust_Id, Order_TotalAmnt FROM orders WHERE Order_Id = '$order_id'");
+            if ($ord_res && $ord_row = $ord_res->fetch_assoc()) {
+                $cust_id = $ord_row['Cust_Id'];
+                $points = floor($ord_row['Order_TotalAmnt']); // 1 point per $1
+                award_points($conn, $cust_id, $order_id, $points);
+                add_notification($conn, $cust_id, 'ORDER_UPDATE', 'Package Delivered!', "Your order #$order_id has been delivered. Enjoy your purchase! You earned $points points.");
+            }
             
             $conn->commit();
-            $_SESSION['success'] = "Package delivered! $15.00 has been credited to your balance.";
+            $_SESSION['success'] = "Package delivered! $15.00 has been credited to your balance and the customer has been notified.";
         } catch (Exception $e) {
             $conn->rollback();
             $_SESSION['error'] = "Error completing delivery: " . $e->getMessage();
