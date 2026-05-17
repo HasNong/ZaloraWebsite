@@ -9,6 +9,59 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'seller') {
 }
 
 $seller_id = $_SESSION['user_id'];
+$errors = [];
+$success_msg = $_SESSION['success_msg'] ?? '';
+unset($_SESSION['success_msg']);
+
+// Handle update profile POST
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
+    $business_name = trim($_POST['business_name'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $phone = trim($_POST['phone'] ?? '');
+    $new_pass = $_POST['new_password'] ?? '';
+    $confirm_pass = $_POST['confirm_password'] ?? '';
+
+    if (empty($business_name) || empty($email)) {
+        $errors[] = "Business Name and Email are required.";
+    }
+
+    // Check if email already used by another seller
+    if (empty($errors)) {
+        $check_stmt = $conn->prepare("SELECT * FROM seller WHERE Sell_Email = ? AND Sell_Id != ?");
+        $check_stmt->bind_param("si", $email, $seller_id);
+        $check_stmt->execute();
+        if ($check_stmt->get_result()->fetch_assoc()) {
+            $errors[] = "Business Email is already in use by another seller.";
+        }
+    }
+
+    if (empty($errors)) {
+        if (!empty($new_pass)) {
+            if ($new_pass !== $confirm_pass) {
+                $errors[] = "Passwords do not match.";
+            } else {
+                $hash = password_hash($new_pass, PASSWORD_DEFAULT);
+                $upd = $conn->prepare("UPDATE seller SET Sell_BusinessName = ?, Sell_Email = ?, Sell_Phone = ?, Sell_PsswdHash = ? WHERE Sell_Id = ?");
+                $upd->bind_param("ssssi", $business_name, $email, $phone, $hash, $seller_id);
+            }
+        } else {
+            $upd = $conn->prepare("UPDATE seller SET Sell_BusinessName = ?, Sell_Email = ?, Sell_Phone = ? WHERE Sell_Id = ?");
+            $upd->bind_param("sssi", $business_name, $email, $phone, $seller_id);
+        }
+
+        if (empty($errors)) {
+            if ($upd->execute()) {
+                $_SESSION['success_msg'] = "Credentials updated successfully!";
+                header("Location: profile.php");
+                exit;
+            } else {
+                $errors[] = "Database error: " . $conn->error;
+            }
+        }
+    }
+}
+
+// Fetch current seller data
 $stmt = $conn->prepare("SELECT * FROM seller WHERE Sell_Id = ?");
 $stmt->bind_param("i", $seller_id);
 $stmt->execute();
@@ -101,6 +154,71 @@ if (!empty($seller['Sell_BusinessName'])) {
             color: var(--text-main);
         }
         
+        /* SETTINGS CARD */
+        .settings-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            padding: 3rem;
+            margin-bottom: 2rem;
+        }
+        .settings-title {
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .form-group label {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 0.05em;
+        }
+        .form-control {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            outline: none;
+            font-family: inherit;
+        }
+        .form-control:focus {
+            border-color: #000;
+        }
+        
+        .btn-primary-custom {
+            background: #000;
+            color: #fff;
+            border: 1px solid #000;
+            padding: 12px 24px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            cursor: pointer;
+            transition: 0.2s;
+            width: fit-content;
+        }
+        .btn-primary-custom:hover {
+            background: #fff;
+            color: #000;
+        }
+
         .danger-zone {
             border: 1px solid var(--accent-red);
             padding: 2rem;
@@ -127,6 +245,16 @@ if (!empty($seller['Sell_BusinessName'])) {
         .btn-danger:hover {
             opacity: 0.9;
         }
+
+        .alert {
+            padding: 15px 20px;
+            border-radius: 4px;
+            font-size: 13px;
+            margin-bottom: 2rem;
+            font-weight: 600;
+        }
+        .alert-success { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+        .alert-error { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
     </style>
 </head>
 <body>
@@ -145,6 +273,18 @@ if (!empty($seller['Sell_BusinessName'])) {
         </header>
 
         <div class="profile-container">
+
+            <?php if (!empty($success_msg)): ?>
+                <div class="alert alert-success"><?= htmlspecialchars($success_msg) ?></div>
+            <?php endif; ?>
+
+            <?php if (!empty($errors)): ?>
+                <div class="alert alert-error">
+                    <?php foreach ($errors as $error): ?>
+                        <p style="margin-bottom: 5px;">• <?= htmlspecialchars($error) ?></p>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
             
             <div class="profile-card">
                 <div class="profile-avatar">
@@ -176,6 +316,48 @@ if (!empty($seller['Sell_BusinessName'])) {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- UPDATE PROFILE CREDENTIALS -->
+            <div class="settings-card">
+                <h4 class="settings-title">Edit Store Credentials</h4>
+                <form method="POST">
+                    <input type="hidden" name="update_profile" value="1">
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="business_name">Business Name *</label>
+                            <input type="text" id="business_name" name="business_name" class="form-control" value="<?= htmlspecialchars($seller['Sell_BusinessName']) ?>" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="email">Business Email *</label>
+                            <input type="email" id="email" name="email" class="form-control" value="<?= htmlspecialchars($seller['Sell_Email']) ?>" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="phone">Phone Number</label>
+                            <input type="text" id="phone" name="phone" class="form-control" value="<?= htmlspecialchars($seller['Sell_Phone'] ?? '') ?>" placeholder="e.g. 0917XXXXXXX">
+                        </div>
+                        <div style="flex:1;"></div>
+                    </div>
+
+                    <h4 class="settings-title" style="margin-top: 3rem; margin-bottom: 2rem;">Security & Password (Optional)</h4>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="new_password">New Password</label>
+                            <input type="password" id="new_password" name="new_password" class="form-control" placeholder="Leave blank to keep current">
+                        </div>
+                        <div class="form-group">
+                            <label for="confirm_password">Confirm New Password</label>
+                            <input type="password" id="confirm_password" name="confirm_password" class="form-control" placeholder="Leave blank to keep current">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-primary-custom" style="margin-top: 1rem;">SAVE CHANGES</button>
+                </form>
             </div>
 
             <div class="danger-zone">

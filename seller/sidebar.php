@@ -28,6 +28,6 @@
     </ul>
 
     <div class="sidebar-footer">
-        <a href="add_product.php" class="btn-add-product <?= basename($_SERVER['PHP_SELF']) == 'add_product.php' ? 'active' : '' ?>">ADD NEW PRODUCT</a>
+        <a href="../auth/logout.php" class="btn-add-product" style="background: #e74c3c; border: 1px solid #e74c3c; color: #fff; text-align: center; font-weight: 700; border-radius: 4px;">LOG OUT</a>
     </div>
 </aside>

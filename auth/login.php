@@ -1,5 +1,7 @@
 <?php
 session_start();
+require_once '../config/db.php';
+include '../customer/nav_counts.php';
 
 // Redirect if already logged in based on role
 if (isset($_SESSION['role'])) {
@@ -8,7 +10,6 @@ if (isset($_SESSION['role'])) {
     if ($_SESSION['role'] === 'customer') { header('Location: ../customer/profile.php'); exit; }
     if ($_SESSION['role'] === 'driver') { header('Location: ../driver/dashboard.php'); exit; }
 } else if (isset($_SESSION['user_id'])) { 
-    // Fallback for old session format
     header('Location: ../customer/profile.php'); exit; 
 }
 
@@ -22,551 +23,491 @@ $tab = isset($_GET['tab']) && $_GET['tab'] === 'register' ? 'register' : 'login'
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>ZALORA — <?= $tab === 'login' ? 'Sign In' : 'Register' ?></title>
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZALORA | Login</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&family=Cormorant+Garamond:ital,wght@1,600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/css/global.css?v=<?= time() ?>">
     <style>
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Montserrat', sans-serif; background: #fff; color: #000; overflow-x: hidden; display: flex; flex-direction: column; min-height: 100vh; }
+        
+        /* HEADER STYLES (Copied from index) */
+        .top-promo-bar { background: #fff; border-bottom: 1px solid #eee; padding: 10px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
+        .promo-container { max-width: 1400px; margin: 0 auto; display: flex; justify-content: space-around; }
+        .promo-item { color: #000; text-decoration: none; display: flex; align-items: center; gap: 8px; }
+        header { background: #fff; position: sticky; top: 0; z-index: 1000; border-bottom: 1px solid #eee; }
+        .main-header { max-width: 1400px; margin: 0 auto; padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; }
+        .logo { font-size: 24px; font-weight: 400; letter-spacing: 0.3em; text-decoration: none; color: #000; }
+        .search-bar-wrap { flex: 1; max-width: 500px; margin: 0 40px; position: relative; }
+        .search-input { width: 100%; padding: 12px 25px; border: 1px solid #ddd; border-radius: 100px; font-size: 13px; background: #f5f5f5; outline: none; }
+        .search-icon-btn { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); background: #000; color: #fff; border: none; width: 34px; height: 34px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .header-actions { display: flex; gap: 20px; }
+        .header-action-item { color: #000; text-decoration: none; font-size: 13px; display: flex; align-items: center; gap: 5px; }
+        .nav-bar { border-bottom: 1px solid #eee; }
+        .nav-container { max-width: 1400px; margin: 0 auto; display: flex; justify-content: center; gap: 40px; padding: 15px 0; }
+        .nav-item { font-size: 11px; font-weight: 700; text-transform: uppercase; text-decoration: none; color: #000; letter-spacing: 0.1em; }
+        .badge-count { position: absolute; top: -8px; right: -12px; background: #000; color: #fff; font-size: 9px; padding: 2px 6px; border-radius: 10px; }
 
-        :root {
-            --black: #0a0a0a;
-            --white: #fafafa;
-            --grey: #888;
-            --light-grey: #e0e0e0;
-            --font-display: 'Cormorant Garamond', serif;
-            --font-body: 'Montserrat', sans-serif;
-        }
-
-        body {
-            font-family: var(--font-body);
-            background: var(--white);
-            color: var(--black);
-            height: 100vh;
-            display: grid;
-            grid-template-columns: 60% 40%;
-            overflow: hidden;
-        }
-
-        /* ── LEFT PANEL ── */
-        .left {
-            position: relative;
-            overflow: hidden;
-        }
-
-        .left img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            object-position: center top;
-            display: block;
-            filter: grayscale(100%) brightness(0.75);
-        }
-
-        .left-logo {
-            position: absolute;
-            top: 2rem;
-            left: 2rem;
-            font-family: var(--font-body);
-            font-weight: 700;
-            font-size: 1.2rem;
-            letter-spacing: 0.18em;
-            color: var(--white);
-            text-decoration: none;
-        }
-
-        .left-quote {
-            position: absolute;
-            bottom: 2.5rem;
-            left: 2rem;
-            right: 2rem;
-            font-family: var(--font-display);
-            font-style: italic;
-            font-size: 1.05rem;
-            color: rgba(255,255,255,0.75);
-            letter-spacing: 0.04em;
-            line-height: 1.5;
-        }
-
-        /* ── RIGHT PANEL ── */
-        .right {
+        /* MAIN CONTENT AREA */
+        .main-content {
+            flex: 1;
             display: flex;
             flex-direction: column;
-            justify-content: space-between;
-            padding: 3rem 3.5rem 2rem;
-            overflow-y: auto;
-            border-left: 1px solid var(--light-grey);
-        }
-
-        /* ── TABS ── */
-        .tabs {
-            display: flex;
-            gap: 2.5rem;
-            border-bottom: 1px solid var(--light-grey);
-            margin-bottom: 2.5rem;
-        }
-
-        .tab-btn {
-            background: none;
-            border: none;
-            font-family: var(--font-body);
-            font-size: 12px;
-            font-weight: 700;
-            letter-spacing: 0.16em;
-            text-transform: uppercase;
-            cursor: pointer;
-            padding-bottom: 1rem;
-            color: var(--grey);
-            border-bottom: 2px solid transparent;
-            margin-bottom: -1px;
-            transition: color 0.2s, border-color 0.2s;
-        }
-
-        .tab-btn.active {
-            color: var(--black);
-            border-bottom-color: var(--black);
-        }
-
-        /* ── FORM AREA ── */
-        .form-area { flex: 1; }
-
-        .form-title {
-            font-family: var(--font-body);
-            font-size: 13px;
-            font-weight: 700;
-            letter-spacing: 0.14em;
-            margin-bottom: 0.5rem;
-            text-transform: uppercase;
-        }
-
-        .form-subtitle {
-            font-size: 12px;
-            color: var(--grey);
-            line-height: 1.6;
-            margin-bottom: 2.2rem;
-        }
-
-        .error-msg {
-            background: #fdecea;
-            color: #c0392b;
-            font-size: 11px;
-            padding: 10px 14px;
-            border-left: 3px solid #c0392b;
-            margin-bottom: 1.5rem;
-            letter-spacing: 0.04em;
-        }
-
-        /* ── FIELDS ── */
-        .field {
-            margin-bottom: 1.6rem;
-        }
-
-        .field-top {
-            display: flex;
-            justify-content: space-between;
             align-items: center;
-            margin-bottom: 0.5rem;
+            padding: 40px 20px;
+            background: #fff;
         }
 
-        .field label {
-            font-size: 9px;
-            font-weight: 700;
-            letter-spacing: 0.22em;
-            text-transform: uppercase;
-            color: var(--grey);
-        }
-
-        .forgot-link {
-            font-size: 9px;
-            font-weight: 700;
-            letter-spacing: 0.16em;
-            text-transform: uppercase;
-            color: var(--black);
-            text-decoration: none;
-            border-bottom: 1px solid var(--black);
-            padding-bottom: 1px;
-            transition: color 0.2s;
-        }
-
-        .forgot-link:hover { color: var(--grey); border-color: var(--grey); }
-
-        .input-wrap {
-            position: relative;
-            border-bottom: 1px solid var(--light-grey);
-            transition: border-color 0.2s;
-        }
-
-        .input-wrap:focus-within { border-color: var(--black); }
-
-        .input-wrap input {
+        /* LOGIN CARD */
+        .auth-container {
             width: 100%;
-            border: none;
-            outline: none;
-            background: transparent;
-            font-family: var(--font-body);
-            font-size: 12px;
-            letter-spacing: 0.06em;
-            padding: 10px 36px 10px 0;
-            color: var(--black);
+            max-width: 480px;
         }
 
-        .input-wrap input::placeholder { color: #bbb; }
+        .tabs-header {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-bottom: 15px;
+        }
 
-        .toggle-pw {
+        .tab-link {
+            font-size: 16px;
+            font-weight: 600;
+            color: #999;
+            text-decoration: none;
+            padding-bottom: 10px;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tab-link.active {
+            color: #000;
+            border-bottom: 2px solid #000;
+        }
+
+        .auth-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 16px;
+            padding: 40px 50px;
+            background: #fff;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.02);
+        }
+
+        /* SOCIAL BUTTONS */
+        .social-login {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        
+        .social-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 1px solid #eee;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #fff;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        .divider {
+            text-align: left;
+            margin-bottom: 20px;
+        }
+        .divider span {
+            font-size: 12px;
+            color: #666;
+        }
+
+        /* FORM FIELDS */
+        .form-group {
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 15px 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: var(--font-main);
+            outline: none;
+        }
+        .form-group input:focus {
+            border-color: #000;
+        }
+        .form-group input::placeholder {
+            color: #999;
+        }
+        
+        .pw-toggle {
             position: absolute;
-            right: 0;
+            right: 15px;
             top: 50%;
             transform: translateY(-50%);
             background: none;
             border: none;
             cursor: pointer;
-            color: var(--grey);
-            padding: 4px;
-            line-height: 1;
-            transition: color 0.2s;
+            color: #666;
         }
 
-        .toggle-pw:hover { color: var(--black); }
+        /* FORGOT PW & REMEMBER ME */
+        .form-options {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            font-size: 12px;
+        }
 
-        /* ── REMEMBER ── */
-        .remember {
+        .remember-me {
             display: flex;
             align-items: center;
-            gap: 10px;
-            margin-bottom: 2rem;
-            cursor: pointer;
+            gap: 8px;
+            color: #333;
         }
 
-        .remember input[type="checkbox"] {
+        .remember-me input {
             width: 16px;
             height: 16px;
-            border: 1px solid var(--black);
-            appearance: none;
-            cursor: pointer;
-            position: relative;
-            flex-shrink: 0;
+            accent-color: #000;
         }
 
-        .remember input[type="checkbox"]:checked::after {
-            content: '';
-            position: absolute;
-            inset: 2px;
-            background: var(--black);
+        .forgot-link {
+            color: #0096d6; /* The blue link color in screenshot */
+            text-decoration: none;
         }
 
-        .remember span {
-            font-size: 9px;
-            font-weight: 600;
-            letter-spacing: 0.18em;
-            text-transform: uppercase;
-            color: var(--grey);
-        }
-
-        /* ── BUTTONS ── */
-        .btn-signin {
+        /* SUBMIT BUTTON */
+        .btn-submit {
             width: 100%;
-            background: var(--black);
-            color: var(--white);
-            border: none;
             padding: 16px;
-            font-family: var(--font-body);
-            font-size: 11px;
+            background: #f5f5f5;
+            color: #999;
+            border: none;
+            border-radius: 8px;
             font-weight: 700;
-            letter-spacing: 0.24em;
-            text-transform: uppercase;
+            font-size: 14px;
             cursor: pointer;
-            margin-bottom: 1.8rem;
-            transition: background 0.25s;
+            transition: all 0.2s;
+        }
+        
+        /* Add a small script to make button black when fields are filled, as standard behavior */
+        .btn-submit.active {
+            background: #000;
+            color: #fff;
         }
 
-        .btn-signin:hover { background: #333; }
-
-        /* ── DIVIDER ── */
-        .divider {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
+        /* TERMS */
+        .terms-text {
+            text-align: center;
+            font-size: 10px;
+            color: #999;
+            margin-top: 25px;
+            line-height: 1.5;
         }
 
-        .divider::before,
-        .divider::after {
-            content: '';
-            flex: 1;
-            height: 1px;
-            background: var(--light-grey);
+        .terms-text a {
+            color: #0096d6;
+            text-decoration: none;
         }
 
-        .divider span {
-            font-size: 9px;
-            letter-spacing: 0.18em;
-            color: var(--grey);
-            white-space: nowrap;
-            text-transform: uppercase;
+        /* ERROR/SUCCESS MSG */
+        .msg-banner {
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 12px;
+            text-align: center;
         }
+        .msg-error { background: #fdecea; color: #c0392b; }
+        .msg-success { background: #eafaf1; color: #27ae60; }
 
-        /* ── SOCIAL BUTTONS ── */
-        .social-btns {
+        /* FOOTER LISTS */
+        .simple-footer {
+            max-width: 800px;
+            width: 100%;
+            margin: 60px auto 40px;
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-            margin-bottom: 2rem;
+            gap: 40px;
+        }
+        .footer-block h4 {
+            font-size: 12px;
+            font-weight: 800;
+            margin-bottom: 20px;
+        }
+        .footer-list {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            list-style: none;
+        }
+        .footer-list li a {
+            color: #666;
+            text-decoration: none;
+            font-size: 11px;
         }
 
-        .btn-social {
+        /* FLOATING Z */
+        .floating-actions {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 2000;
+        }
+        .float-btn-z {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #333;
+            color: #fff;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 10px;
-            border: 1px solid var(--light-grey);
-            background: var(--white);
-            padding: 13px;
-            font-family: var(--font-body);
-            font-size: 10px;
-            font-weight: 600;
-            letter-spacing: 0.14em;
             cursor: pointer;
-            transition: border-color 0.2s, background 0.2s;
-        }
-
-        .btn-social:hover { border-color: var(--black); background: #f5f5f5; }
-
-        .btn-social svg { flex-shrink: 0; }
-
-        /* ── FOOTER TEXT ── */
-        .auth-footer {
-            font-size: 10px;
-            color: var(--grey);
-            line-height: 1.7;
-            text-align: center;
-        }
-
-        .auth-footer a {
-            color: var(--black);
-            font-weight: 600;
-            text-decoration: underline;
-        }
-
-        .support-row {
-            display: flex;
-            justify-content: flex-end;
-            gap: 1.5rem;
-            align-items: center;
-            margin-top: 1.5rem;
-        }
-
-        .support-row a {
-            font-size: 10px;
-            font-weight: 500;
-            letter-spacing: 0.1em;
-            color: var(--grey);
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            transition: color 0.2s;
-        }
-
-        .support-row a:hover { color: var(--black); }
-
-        /* ── PANEL VISIBILITY ── */
-        .panel { display: none; }
-        .panel.active { display: block; }
-
-        /* ── RESPONSIVE ── */
-        @media (max-width: 768px) {
-            body { grid-template-columns: 1fr; }
-            .left { display: none; }
-            .right { padding: 2rem 1.8rem; }
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            border: none;
+            font-weight: 800;
+            font-size: 20px;
         }
     </style>
 </head>
 <body>
 
-<!-- ── LEFT PANEL ── -->
-<div class="left">
-    <img
-        src="https://images.unsplash.com/photo-1487222477894-8943e31ef7b2?w=1200&q=85"
-        alt="Fashion"
-    />
-    <a href="../index.php" class="left-logo">ZALORA</a>
-    <p class="left-quote">"Elegance is the only beauty<br><em>that never fades."</em></p>
+<!-- --- TOP PROMO BAR --- -->
+<div class="top-promo-bar">
+    <div class="promo-container">
+        <a href="#" class="promo-item">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            30 Days Free Returns | T&C Apply >
+        </a>
+        <a href="#" class="promo-item">
+            <span style="background: #000; color:#fff; padding: 2px 5px; margin-right:5px; border-radius:2px;">VIP</span>
+            Become a ZALORA VIP today! >
+        </a>
+        <a href="#" class="promo-item">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
+            Save more on the app! 25% OFF + P150 OFF >
+        </a>
+    </div>
 </div>
 
-<!-- ── RIGHT PANEL ── -->
-<div class="right">
-    <div>
-        <!-- TABS -->
-        <div class="tabs">
-            <button class="tab-btn <?= $tab === 'login' ? 'active' : '' ?>" onclick="switchTab('login')">Login</button>
-            <button class="tab-btn <?= $tab === 'register' ? 'active' : '' ?>" onclick="switchTab('register')">Register</button>
+<!-- --- HEADER --- -->
+<header>
+    <div class="main-header">
+        <a href="../index.php" class="logo">ZALORA</a>
+        
+        <div class="search-bar-wrap">
+            <form action="../customer/products.php" method="GET">
+                <input type="text" name="q" class="search-input" placeholder="Got You Scoring More">
+                <button type="submit" class="search-icon-btn">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                </button>
+            </form>
         </div>
 
-        <?php if ($error): ?>
-            <div class="error-msg"><?= htmlspecialchars($error) ?></div>
-        <?php endif; ?>
-        <?php if ($success): ?>
-            <div class="error-msg" style="background: #eafaf1; color: #27ae60; border-left-color: #27ae60;"><?= htmlspecialchars($success) ?></div>
-        <?php endif; ?>
+        <div class="header-actions">
+            <a href="login.php" class="header-action-item">
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                <span>Login / Register</span>
+            </a>
+            <a href="../customer/wishlist.php" class="header-action-item" style="position:relative;">
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            </a>
+            <a href="../customer/cart.php" class="header-action-item" style="position:relative;">
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            </a>
+        </div>
+    </div>
 
-        <!-- LOGIN PANEL -->
-        <div class="panel <?= $tab === 'login' ? 'active' : '' ?>" id="panel-login">
-            <div class="form-area">
-                <h2 class="form-title">Welcome Back</h2>
-                <p class="form-subtitle">Enter your credentials to access your curated wardrobe.</p>
+    <nav class="nav-bar">
+        <div class="nav-container">
+            <a href="../customer/products.php?gender=women" class="nav-item">WOMEN</a>
+            <a href="../customer/products.php?gender=men" class="nav-item">MEN</a>
+            <a href="../customer/products.php?category=kids" class="nav-item">KIDS</a>
+            <a href="../customer/products.php?premium=1" class="nav-item">LUXURY</a>
+            <a href="../customer/products.php?category=beauty" class="nav-item">BEAUTY</a>
+            <a href="../customer/products.php?category=sports" class="nav-item">SPORTS</a>
+        </div>
+    </nav>
+</header>
 
-                <form method="POST" action="login_handler.php">
-                    <input type="hidden" name="action" value="login"/>
+<main class="main-content">
+    <div class="auth-container">
+        
+        <div class="tabs-header">
+            <a href="login.php?tab=login" class="tab-link <?= $tab === 'login' ? 'active' : '' ?>">Login</a>
+            <a href="login.php?tab=register" class="tab-link <?= $tab === 'register' ? 'active' : '' ?>">Sign up</a>
+        </div>
 
-                    <div class="field">
-                        <div class="field-top">
-                            <label for="login-email">Email Address</label>
-                        </div>
-                        <div class="input-wrap">
-                            <input type="email" id="login-email" name="email" placeholder="alex@studio.com" required/>
-                        </div>
-                    </div>
+        <div class="auth-card">
+            <?php if ($error): ?>
+                <div class="msg-banner msg-error"><?= htmlspecialchars($error) ?></div>
+            <?php endif; ?>
+            <?php if ($success): ?>
+                <div class="msg-banner msg-success"><?= htmlspecialchars($success) ?></div>
+            <?php endif; ?>
 
-                    <div class="field">
-                        <div class="field-top">
-                            <label for="login-pw">Password</label>
-                            <a href="forgot.php" class="forgot-link">Forgot?</a>
-                        </div>
-                        <div class="input-wrap">
-                            <input type="password" id="login-pw" name="password" placeholder="••••••••" required/>
-                            <button type="button" class="toggle-pw" onclick="togglePw('login-pw', this)" title="Show/hide password">
-                                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                            </button>
-                        </div>
-                    </div>
+            <div class="social-login">
+                <button class="social-btn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.469h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.469h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                </button>
+                <button class="social-btn">
+                    <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                </button>
+            </div>
 
-                    <label class="remember">
-                        <input type="checkbox" name="remember"/>
-                        <span>Remember this device</span>
+            <div class="divider">
+                <span>Or continue with:</span>
+            </div>
+
+            <?php if ($tab === 'login'): ?>
+            <!-- LOGIN FORM -->
+            <form method="POST" action="login_handler.php" id="authForm">
+                <input type="hidden" name="action" value="login"/>
+                
+                <div class="form-group">
+                    <input type="email" name="email" id="email" placeholder="Email Address *" required oninput="checkForm()">
+                </div>
+                
+                <div class="form-group">
+                    <input type="password" name="password" id="password" placeholder="Password *" required oninput="checkForm()">
+                    <button type="button" class="pw-toggle" onclick="togglePw('password')">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                </div>
+                
+                <div class="form-options">
+                    <label class="remember-me">
+                        <input type="checkbox" name="remember" checked> Keep me signed in
                     </label>
+                    <a href="forgot.php" class="forgot-link">Forgot Password?</a>
+                </div>
 
-                    <button type="submit" class="btn-signin">Sign In</button>
-                </form>
+                <button type="submit" class="btn-submit" id="submitBtn">Login</button>
+            </form>
+            <?php else: ?>
+            <!-- REGISTER FORM (Simplified to match visual style) -->
+            <form method="POST" action="register_handler.php" id="authForm">
+                <input type="hidden" name="action" value="register"/>
+                
+                <div style="display:flex; gap:10px; margin-bottom:20px;">
+                    <div class="form-group" style="margin-bottom:0; flex:1;">
+                        <input type="text" name="firstname" placeholder="First Name *" required oninput="checkForm()">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0; flex:1;">
+                        <input type="text" name="lastname" placeholder="Last Name *" required oninput="checkForm()">
+                    </div>
+                </div>
 
-                <div class="divider"><span>Or continue with</span></div>
-
-                <div class="social-btns">
-                    <button class="btn-social">
-                        <!-- Google icon -->
-                        <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-                        Google
-                    </button>
-                    <button class="btn-social">
-                        <!-- Apple icon -->
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-                        Apple
+                <div class="form-group">
+                    <input type="email" name="email" id="email" placeholder="Email Address *" required oninput="checkForm()">
+                </div>
+                
+                <div class="form-group">
+                    <input type="password" name="password" id="password" placeholder="Password *" required oninput="checkForm()">
+                    <button type="button" class="pw-toggle" onclick="togglePw('password')">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                     </button>
                 </div>
-            </div>
-        </div>
 
-        <!-- REGISTER PANEL -->
-        <div class="panel <?= $tab === 'register' ? 'active' : '' ?>" id="panel-register">
-            <div class="form-area">
-                <h2 class="form-title">Create Account</h2>
-                <p class="form-subtitle">Join Zalora and discover your curated wardrobe.</p>
-
-                <form method="POST" action="register_handler.php">
-                    <input type="hidden" name="action" value="register"/>
-
-                    <div class="field" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                        <div>
-                            <div class="field-top"><label for="reg-fname">First Name</label></div>
-                            <div class="input-wrap">
-                                <input type="text" id="reg-fname" name="firstname" placeholder="Alex" required/>
-                            </div>
-                        </div>
-                        <div>
-                            <div class="field-top"><label for="reg-lname">Last Name</label></div>
-                            <div class="input-wrap">
-                                <input type="text" id="reg-lname" name="lastname" placeholder="Studio" required/>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="field">
-                        <div class="field-top"><label for="reg-email">Email Address</label></div>
-                        <div class="input-wrap">
-                            <input type="email" id="reg-email" name="email" placeholder="alex@studio.com" required/>
-                        </div>
-                    </div>
-
-                    <div class="field">
-                        <div class="field-top"><label for="reg-pw">Password</label></div>
-                        <div class="input-wrap">
-                            <input type="password" id="reg-pw" name="password" placeholder="••••••••" required/>
-                            <button type="button" class="toggle-pw" onclick="togglePw('reg-pw', this)" title="Show/hide password">
-                                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="field">
-                        <div class="field-top"><label for="reg-confirm">Confirm Password</label></div>
-                        <div class="input-wrap">
-                            <input type="password" id="reg-confirm" name="confirm_password" placeholder="••••••••" required/>
-                            <button type="button" class="toggle-pw" onclick="togglePw('reg-confirm', this)" title="Show/hide password">
-                                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                            </button>
-                        </div>
-                    </div>
-
-                    <button type="submit" class="btn-signin">Create Account</button>
-                </form>
-
-                <div class="divider"><span>Or continue with</span></div>
-
-                <div class="social-btns">
-                    <button class="btn-social">
-                        <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-                        Google
-                    </button>
-                    <button class="btn-social">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-                        Apple
-                    </button>
+                <div class="form-group">
+                    <input type="password" name="confirm_password" id="confirm_password" placeholder="Confirm Password *" required oninput="checkForm()">
                 </div>
-            </div>
+                
+                <button type="submit" class="btn-submit" id="submitBtn">Sign up</button>
+            </form>
+            <?php endif; ?>
+
+            <p class="terms-text">
+                By creating your account or signing in, you agree to our<br>
+                <a href="#">Terms and Conditions</a> & <a href="#">Privacy Policy</a>
+            </p>
         </div>
     </div>
 
-    <!-- BOTTOM -->
-    <div>
-        <p class="auth-footer">
-            By signing in, you agree to our <a href="#">Terms</a> and <a href="#">Privacy Policy</a>.
-        </p>
-        <div class="support-row">
-            <a href="#">
-                <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                Support
-            </a>
-            <a href="#">
-                <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                EN / USD
-            </a>
+    <div class="simple-footer">
+        <div class="footer-block">
+            <h4>TOP BRANDS</h4>
+            <ul class="footer-list">
+                <li><a href="#">ALDO</a></li>
+                <li><a href="#">Converse</a></li>
+                <li><a href="#">PUMA</a></li>
+                <li><a href="#">Birkenstock</a></li>
+                <li><a href="#">Crocs</a></li>
+                <li><a href="#">Casio</a></li>
+                <li><a href="#">Lacoste</a></li>
+                <li><a href="#">New Balance</a></li>
+                <li><a href="#">GAP</a></li>
+                <li><a href="#">NIKE</a></li>
+                <li><a href="#">Ray-Ban</a></li>
+                <li><a href="#">CLN</a></li>
+                <li><a href="#">Superdry</a></li>
+                <li><a href="#">ADIDAS</a></li>
+                <li><a href="#">Mango</a></li>
+            </ul>
+        </div>
+        <div class="footer-block">
+            <h4>TOP SEARCHES</h4>
+            <ul class="footer-list">
+                <li><a href="#">Bags</a></li>
+                <li><a href="#">Shoes</a></li>
+                <li><a href="#">Casual Dresses</a></li>
+                <li><a href="#">Clothes</a></li>
+                <li><a href="#">Discount Prices</a></li>
+                <li><a href="#">Corporate Attire</a></li>
+                <li><a href="#">Sports</a></li>
+                <li><a href="#">Accessories</a></li>
+                <li><a href="#">Sneakers</a></li>
+                <li><a href="#">New Products</a></li>
+                <li><a href="#">Maxi Dress</a></li>
+                <li><a href="#">Long Sleeve</a></li>
+                <li><a href="#">Beauty</a></li>
+                <li><a href="#">Jacket</a></li>
+                <li><a href="#">Culottes</a></li>
+            </ul>
         </div>
     </div>
+</main>
+
+<div class="floating-actions">
+    <button class="float-btn-z">Z</button>
 </div>
 
 <script>
-    function switchTab(tab) {
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-        document.querySelector(`#panel-${tab}`).classList.add('active');
-        event.target.classList.add('active');
-        history.replaceState(null, '', `?tab=${tab}`);
+    function togglePw(id) {
+        const input = document.getElementById(id);
+        if (input.type === 'password') {
+            input.type = 'text';
+        } else {
+            input.type = 'password';
+        }
     }
 
-    function togglePw(inputId, btn) {
-        const input = document.getElementById(inputId);
-        const isHidden = input.type === 'password';
-        input.type = isHidden ? 'text' : 'password';
-        btn.style.opacity = isHidden ? '1' : '0.4';
+    function checkForm() {
+        const form = document.getElementById('authForm');
+        const btn = document.getElementById('submitBtn');
+        let allFilled = true;
+        const inputs = form.querySelectorAll('input[required]');
+        inputs.forEach(input => {
+            if (!input.value.trim()) {
+                allFilled = false;
+            }
+        });
+        
+        if (allFilled) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
     }
 </script>
 </body>

@@ -27,11 +27,8 @@ if ($prod_id > 0) {
             }
         }
 
-        // 3. Delete from DB (Dependencies first or Cascade)
-        // Assuming no cascade for safety, let's delete variants and images first
-        $conn->query("DELETE FROM PRODUCT_VARIANT WHERE Prod_Id = $prod_id");
-        $conn->query("DELETE FROM PRODUCT_IMAGE WHERE Prod_Id = $prod_id");
-        $conn->query("DELETE FROM PRODUCT WHERE Prod_Id = $prod_id");
+        // 3. Perform soft delete to avoid breaking order history constraints
+        $conn->query("UPDATE PRODUCT SET Prod_IsActive = 2 WHERE Prod_Id = $prod_id");
 
         $_SESSION['success_msg'] = "Product has been successfully removed.";
     }

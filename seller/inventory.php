@@ -79,7 +79,11 @@ $all_count = $conn->query("SELECT COUNT(*) FROM product WHERE Sell_Id = $seller_
                 <h2 class="page-title">INVENTORY MANAGEMENT</h2>
                 <p class="page-subtitle">Manage your product catalog, stock levels, and publication status across all channels.</p>
             </div>
-            <div class="header-actions">
+            <div class="header-actions" style="display:flex; gap:10px;">
+                <button class="btn-export" onclick="location.href='add_product.php'" style="display:flex; align-items:center; gap:8px; background:#000; color:#fff; border:1px solid #000;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    ADD NEW PRODUCT
+                </button>
                 <button class="btn-export" onclick="location.href='export_inventory.php?filter=<?= $filter ?>&search=<?= urlencode($search) ?>'" style="display:flex; align-items:center; gap:8px;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                     EXPORT CSV

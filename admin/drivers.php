@@ -7,6 +7,8 @@ if (!isset($_SESSION['admin_logged_in'])) {
 require_once '../config/db.php';
 
 $msg = "";
+
+// Handle Add Driver
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_driver') {
     $fname = $_POST['firstname'] ?? '';
     $lname = $_POST['lastname'] ?? '';
@@ -33,7 +35,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
-$drivers = $conn->query("SELECT * FROM driver ORDER BY Driv_CreatedAt DESC");
+// Handle Delete Driver (Soft Delete)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_driver') {
+    $driv_id = intval($_POST['driv_id'] ?? 0);
+    if ($driv_id > 0) {
+        $stmt = $conn->prepare("UPDATE driver SET Driv_IsActive = 0 WHERE Driv_Id = ?");
+        $stmt->bind_param("i", $driv_id);
+        if ($stmt->execute()) {
+            $msg = "Driver account #$driv_id has been successfully deleted/deactivated.";
+        } else {
+            $msg = "Error: " . $conn->error;
+        }
+    }
+}
+
+// Query active drivers
+$drivers = $conn->query("SELECT * FROM driver WHERE Driv_IsActive = 1 ORDER BY Driv_CreatedAt DESC");
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -46,6 +63,8 @@ $drivers = $conn->query("SELECT * FROM driver ORDER BY Driv_CreatedAt DESC");
     <style>
         .form-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; }
         .form-group { margin-bottom: 1rem; }
+        .btn-delete { background: #e74c3c; color: white; border: none; padding: 6px 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; cursor: pointer; border-radius: 4px; transition: 0.2s; }
+        .btn-delete:hover { background: #c0392b; }
     </style>
 </head>
 <body>
@@ -58,10 +77,10 @@ $drivers = $conn->query("SELECT * FROM driver ORDER BY Driv_CreatedAt DESC");
     </header>
 
     <?php if($msg): ?>
-        <p style="background: #000; color: #fff; padding: 10px; font-size: 12px; font-weight: 600;"><?= $msg ?></p>
+        <p style="background: #000; color: #fff; padding: 12px 20px; font-size: 12px; font-weight: 600; margin-bottom: 20px;"><?= htmlspecialchars($msg) ?></p>
     <?php endif; ?>
 
-    <div class="card">
+    <div class="card" style="margin-bottom: 2rem;">
         <h3 style="font-size: 12px; text-transform: uppercase; margin-top: 0; margin-bottom: 1.5rem;">Onboard New Driver</h3>
         <form method="POST">
             <input type="hidden" name="action" value="add_driver">
@@ -99,30 +118,44 @@ $drivers = $conn->query("SELECT * FROM driver ORDER BY Driv_CreatedAt DESC");
         </form>
     </div>
 
-    <table>
-        <thead>
-            <tr>
-                <th>Driver ID</th>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Vehicle</th>
-                <th>Status</th>
-                <th>Joined</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php while($d = $drivers->fetch_assoc()): ?>
-            <tr>
-                <td>#<?= $d['Driv_Id'] ?></td>
-                <td style="font-weight: 600;"><?= htmlspecialchars(($d['Driv_FirstName'] ?? '') . ' ' . ($d['Driv_LastName'] ?? '')) ?></td>
-                <td><?= htmlspecialchars($d['Driv_Email']) ?></td>
-                <td><?= htmlspecialchars($d['Driv_VehicleType']) ?></td>
-                <td><span class="badge" style="background: <?= $d['Driv_Status'] === 'ONLINE' ? '#dcfce7' : '#f1f5f9' ?>; color: <?= $d['Driv_Status'] === 'ONLINE' ? '#166534' : '#64748b' ?>;"><?= $d['Driv_Status'] ?></span></td>
-                <td><?= date('M d, Y', strtotime($d['Driv_CreatedAt'])) ?></td>
-            </tr>
-            <?php endwhile; ?>
-        </tbody>
-    </table>
+    <div class="card" style="padding: 0;">
+        <table>
+            <thead>
+                <tr>
+                    <th>Driver ID</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Vehicle</th>
+                    <th>Status</th>
+                    <th>Joined</th>
+                    <th style="text-align: right; padding-right: 2rem;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if ($drivers && $drivers->num_rows > 0): ?>
+                    <?php while($d = $drivers->fetch_assoc()): ?>
+                    <tr>
+                        <td>#<?= $d['Driv_Id'] ?></td>
+                        <td style="font-weight: 600;"><?= htmlspecialchars(($d['Driv_FirstName'] ?? '') . ' ' . ($d['Driv_LastName'] ?? '')) ?></td>
+                        <td><?= htmlspecialchars($d['Driv_Email']) ?></td>
+                        <td><?= htmlspecialchars($d['Driv_VehicleType']) ?></td>
+                        <td><span class="badge" style="background: <?= $d['Driv_Status'] === 'ONLINE' ? '#dcfce7' : '#f1f5f9' ?>; color: <?= $d['Driv_Status'] === 'ONLINE' ? '#166534' : '#64748b' ?>;"><?= $d['Driv_Status'] ?></span></td>
+                        <td><?= date('M d, Y', strtotime($d['Driv_CreatedAt'])) ?></td>
+                        <td style="text-align: right; padding-right: 2rem;">
+                            <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete/deactivate this driver?');">
+                                <input type="hidden" name="action" value="delete_driver">
+                                <input type="hidden" name="driv_id" value="<?= $d['Driv_Id'] ?>">
+                                <button type="submit" class="btn-delete">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                    <?php endwhile; ?>
+                <?php else: ?>
+                    <tr><td colspan="7" style="text-align:center; padding: 30px; color:#999; font-style:italic;">No active drivers registered.</td></tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
 </div>
 
 </body>
