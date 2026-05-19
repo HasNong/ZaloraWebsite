@@ -21,13 +21,66 @@ $user = [
     "email"           => $cust_data['Cust_Email'] ?? '',
 ];
 
+$msg = $_GET['msg'] ?? '';
+$msg_type = $_GET['type'] ?? '';
+
+// Handle save/update address
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'save_address') {
+    $rcp_name = trim($_POST['rcp_name'] ?? '');
+    $phone = trim($_POST['phone'] ?? '');
+    $unit_no = trim($_POST['unit_no'] ?? '');
+    $street = trim($_POST['street'] ?? '');
+    $province = trim($_POST['province'] ?? '');
+    $city = trim($_POST['city'] ?? '');
+    $barangay = trim($_POST['barangay'] ?? '');
+    $zip_code = trim($_POST['zip_code'] ?? '');
+
+    if ($rcp_name && $phone && $street && $province && $city && $barangay && $zip_code) {
+        // Check if default address already exists
+        $check = $conn->prepare("SELECT Addrs_id FROM ADDRESS WHERE Cust_Id = ? AND Addrs_IsDefault = 1 LIMIT 1");
+        $check->bind_param("i", $customer_id);
+        $check->execute();
+        $res = $check->get_result()->fetch_assoc();
+
+        if ($res) {
+            // Update
+            $addr_id = $res['Addrs_id'];
+            $stmt_up = $conn->prepare("UPDATE ADDRESS SET Addrs_RcpntName = ?, Addrs_Number = ?, Addrs_UnitNo = ?, Addrs_Street = ?, Addrs_Province = ?, Addrs_City = ?, Addrs_Barangay = ?, Addrs_ZipCode = ? WHERE Addrs_id = ?");
+            $stmt_up->bind_param("ssssssssi", $rcp_name, $phone, $unit_no, $street, $province, $city, $barangay, $zip_code, $addr_id);
+            if ($stmt_up->execute()) {
+                $msg = "Address updated successfully!";
+                $msg_type = "success";
+            } else {
+                $msg = "Error updating address: " . $conn->error;
+                $msg_type = "error";
+            }
+        } else {
+            // Insert
+            $res_id = $conn->query("SELECT MAX(Addrs_id) as max_id FROM ADDRESS");
+            $next_id = ($res_id->fetch_assoc()['max_id'] ?? 0) + 1;
+
+            $stmt_ins = $conn->prepare("INSERT INTO ADDRESS (Addrs_id, Cust_Id, Addrs_RcpntName, Addrs_Number, Addrs_UnitNo, Addrs_Street, Addrs_Province, Addrs_City, Addrs_Barangay, Addrs_ZipCode, Addrs_IsDefault, Addrs_CreatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())");
+            $stmt_ins->bind_param("iissssssss", $next_id, $customer_id, $rcp_name, $phone, $unit_no, $street, $province, $city, $barangay, $zip_code);
+            if ($stmt_ins->execute()) {
+                $msg = "Address saved successfully!";
+                $msg_type = "success";
+            } else {
+                $msg = "Error saving address: " . $conn->error;
+                $msg_type = "error";
+            }
+        }
+
+        header("Location: profile.php?msg=" . urlencode($msg) . "&type=" . $msg_type);
+        exit;
+    }
+}
+
 // Fetch Address
 $addr_query = "SELECT * FROM ADDRESS WHERE Cust_Id = ? AND Addrs_IsDefault = 1 LIMIT 1";
 $stmt_ad = $conn->prepare($addr_query);
 $stmt_ad->bind_param("i", $customer_id);
 $stmt_ad->execute();
 $address = $stmt_ad->get_result()->fetch_assoc();
-
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -205,6 +258,132 @@ $address = $stmt_ad->get_result()->fetch_assoc();
             line-height: 1.8;
         }
 
+        /* Modal Overlay */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 9999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+            transition: all 0.3s ease;
+        }
+        .modal-overlay.active {
+            display: flex;
+        }
+        .modal-card {
+            background: #fff;
+            width: 100%;
+            max-width: 600px;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            animation: slideDown 0.3s ease;
+        }
+        @keyframes slideDown {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        .modal-header h3 {
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #888;
+            line-height: 1;
+        }
+        .close-btn:hover {
+            color: #000;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .form-group label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #333;
+        }
+        .form-control {
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 13px;
+            outline: none;
+            background: #fff;
+        }
+        .form-control:focus {
+            border-color: #000;
+        }
+        .btn-cancel {
+            background: #eee;
+            color: #000;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .btn-cancel:hover {
+            background: #ddd;
+        }
+        .btn-save {
+            background: #000;
+            color: #fff;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .btn-save:hover {
+            background: #333;
+        }
+
+        .alert-toast {
+            background: #000;
+            color: #fff;
+            padding: 15px 30px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            border-radius: 6px;
+        }
+
         /* FOOTER LISTS */
         .simple-footer {
             max-width: 1000px;
@@ -371,27 +550,31 @@ $address = $stmt_ad->get_result()->fetch_assoc();
 
         <!-- Saved Addresses -->
         <div class="profile-card">
+            <?php if (!empty($msg)): ?>
+                <div class="alert-toast"><?= htmlspecialchars($msg) ?></div>
+            <?php endif; ?>
+
             <div class="card-header">
                 <div class="card-title">
                     <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                    Saved Addresses (1)
+                    Saved Addresses (<?= $address ? 1 : 0 ?>)
                 </div>
-                <a href="#" class="card-action-link">Add</a>
+                <a href="#" class="card-action-link" onclick="openAddressModal(false); return false;">Add</a>
             </div>
             
-            <div class="address-box">
-                <button class="btn-edit-pencil">
-                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-                </button>
-                <div class="address-name">
-                    <?= htmlspecialchars($address['Addrs_RcpntName'] ?? $user['name']) ?>
-                </div>
-                <div class="tag-row">
-                    <span class="addr-tag">Shipping Address</span>
-                    <span class="addr-tag" style="background:#e8f4fd; color:#2c82c9;">Billing Address</span>
-                </div>
-                <div class="address-text">
-                    <?php if($address): ?>
+            <?php if($address): ?>
+                <div class="address-box">
+                    <button class="btn-edit-pencil" onclick="openAddressModal(true)">
+                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                    </button>
+                    <div class="address-name">
+                        <?= htmlspecialchars($address['Addrs_RcpntName'] ?? $user['name']) ?>
+                    </div>
+                    <div class="tag-row">
+                        <span class="addr-tag">Shipping Address</span>
+                        <span class="addr-tag" style="background:#e8f4fd; color:#2c82c9;">Billing Address</span>
+                    </div>
+                    <div class="address-text">
                         <?= htmlspecialchars($address['Addrs_UnitNo'] ? $address['Addrs_UnitNo'].', ' : '') ?>
                         <?= htmlspecialchars($address['Addrs_Street'] ?? '') ?>.<br>
                         <?= htmlspecialchars($address['Addrs_Barangay'] ?? '') ?>. 
@@ -399,12 +582,14 @@ $address = $stmt_ad->get_result()->fetch_assoc();
                         <?= htmlspecialchars($address['Addrs_Province'] ?? '') ?>. 
                         <?= htmlspecialchars($address['Addrs_ZipCode'] ?? '') ?><br>
                         Phone: <?= htmlspecialchars($address['Addrs_Number'] ?? '') ?>
-                    <?php else: ?>
-                        Boop. Beep. Reformista. Limay. Bataan. 2103<br>
-                        Phone: 9928274186
-                    <?php endif; ?>
+                    </div>
                 </div>
-            </div>
+            <?php else: ?>
+                <div style="text-align: center; padding: 40px 20px; border: 1px dashed #ddd; border-radius: 12px;">
+                    <p style="font-size: 13px; color: #888; margin-bottom: 15px;">No shipping address saved yet.</p>
+                    <button type="button" class="btn-save" style="font-size: 11px;" onclick="openAddressModal(false)">Add Shipping Address</button>
+                </div>
+            <?php endif; ?>
         </div>
 
     </main>
@@ -457,6 +642,224 @@ $address = $stmt_ad->get_result()->fetch_assoc();
 <div class="floating-actions">
     <button class="float-btn-z">Z</button>
 </div>
+
+<!-- Address Modal Overlay -->
+<div id="address-modal" class="modal-overlay">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h3>Edit Shipping Address</h3>
+            <button type="button" class="close-btn" onclick="closeAddressModal()">&times;</button>
+        </div>
+        <form method="POST">
+            <input type="hidden" name="action" value="save_address">
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="rcp_name">Recipient Name *</label>
+                    <input type="text" id="rcp_name" name="rcp_name" class="form-control" required placeholder="e.g. Han Song Malalay">
+                </div>
+                <div class="form-group">
+                    <label for="phone">Phone Number *</label>
+                    <input type="text" id="phone" name="phone" class="form-control" required placeholder="e.g. 0917XXXXXXX">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="unit_no">Unit / House No.</label>
+                    <input type="text" id="unit_no" name="unit_no" class="form-control" placeholder="e.g. House 45, Phase 2">
+                </div>
+                <div class="form-group">
+                    <label for="street">Street Address *</label>
+                    <input type="text" id="street" name="street" class="form-control" required placeholder="e.g. Sunflower St.">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="province">Province *</label>
+                    <select id="province" name="province" class="form-control" required onchange="onProvinceChange()">
+                        <option value="">Select Province</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="city">City / Municipality *</label>
+                    <select id="city" name="city" class="form-control" required onchange="onCityChange()">
+                        <option value="">Select City / Municipality</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="barangay">Barangay *</label>
+                    <select id="barangay" name="barangay" class="form-control" required>
+                        <option value="">Select Barangay</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="zip_code">Zip Code *</label>
+                    <input type="text" id="zip_code" name="zip_code" class="form-control" required placeholder="e.g. 1000">
+                </div>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+                <button type="button" class="btn-cancel" onclick="closeAddressModal()">Cancel</button>
+                <button type="submit" class="btn-save">Save Address</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+let savedProvince = "<?= addslashes($address['Addrs_Province'] ?? '') ?>";
+let savedCity = "<?= addslashes($address['Addrs_City'] ?? '') ?>";
+let savedBarangay = "<?= addslashes($address['Addrs_Barangay'] ?? '') ?>";
+
+function openAddressModal(isEdit = false) {
+    document.getElementById('address-modal').classList.add('active');
+    
+    if (isEdit) {
+        document.getElementById('rcp_name').value = "<?= addslashes($address['Addrs_RcpntName'] ?? '') ?>";
+        document.getElementById('phone').value = "<?= addslashes($address['Addrs_Number'] ?? '') ?>";
+        document.getElementById('unit_no').value = "<?= addslashes($address['Addrs_UnitNo'] ?? '') ?>";
+        document.getElementById('street').value = "<?= addslashes($address['Addrs_Street'] ?? '') ?>";
+        document.getElementById('zip_code').value = "<?= addslashes($address['Addrs_ZipCode'] ?? '') ?>";
+        savedProvince = "<?= addslashes($address['Addrs_Province'] ?? '') ?>";
+        savedCity = "<?= addslashes($address['Addrs_City'] ?? '') ?>";
+        savedBarangay = "<?= addslashes($address['Addrs_Barangay'] ?? '') ?>";
+    } else {
+        document.getElementById('rcp_name').value = "";
+        document.getElementById('phone').value = "";
+        document.getElementById('unit_no').value = "";
+        document.getElementById('street').value = "";
+        document.getElementById('zip_code').value = "";
+        savedProvince = "";
+        savedCity = "";
+        savedBarangay = "";
+    }
+    
+    loadProvinces();
+}
+
+function closeAddressModal() {
+    document.getElementById('address-modal').classList.remove('active');
+}
+
+async function loadProvinces() {
+    const provinceSelect = document.getElementById('province');
+    provinceSelect.innerHTML = '<option value="">Loading Provinces...</option>';
+    
+    try {
+        const response = await fetch('https://psgc.gitlab.io/api/provinces/');
+        const provinces = await response.json();
+        
+        // Sort alphabetically
+        provinces.sort((a, b) => a.name.localeCompare(b.name));
+        
+        provinceSelect.innerHTML = '<option value="">Select Province</option>';
+        provinces.forEach(p => {
+            const option = document.createElement('option');
+            option.value = p.name;
+            option.dataset.code = p.code;
+            option.innerText = p.name;
+            
+            if (savedProvince && p.name.toLowerCase() === savedProvince.toLowerCase()) {
+                option.selected = true;
+            }
+            provinceSelect.appendChild(option);
+        });
+        
+        if (provinceSelect.value) {
+            onProvinceChange();
+        }
+    } catch (e) {
+        console.error("Error loading provinces", e);
+        provinceSelect.innerHTML = '<option value="">Error loading. Try again.</option>';
+    }
+}
+
+async function onProvinceChange() {
+    const provinceSelect = document.getElementById('province');
+    const citySelect = document.getElementById('city');
+    const barangaySelect = document.getElementById('barangay');
+    
+    citySelect.innerHTML = '<option value="">Loading Cities...</option>';
+    barangaySelect.innerHTML = '<option value="">Select Barangay</option>';
+    
+    const selectedOption = provinceSelect.options[provinceSelect.selectedIndex];
+    const provinceCode = selectedOption.dataset.code;
+    
+    if (!provinceCode) {
+        citySelect.innerHTML = '<option value="">Select City / Municipality</option>';
+        return;
+    }
+    
+    try {
+        const response = await fetch(`https://psgc.gitlab.io/api/provinces/${provinceCode}/cities-municipalities/`);
+        const cities = await response.json();
+        
+        cities.sort((a, b) => a.name.localeCompare(b.name));
+        
+        citySelect.innerHTML = '<option value="">Select City / Municipality</option>';
+        cities.forEach(c => {
+            const option = document.createElement('option');
+            option.value = c.name;
+            option.dataset.code = c.code;
+            option.innerText = c.name;
+            
+            if (savedCity && c.name.toLowerCase() === savedCity.toLowerCase()) {
+                option.selected = true;
+            }
+            citySelect.appendChild(option);
+        });
+        
+        if (citySelect.value) {
+            onCityChange();
+        }
+    } catch (e) {
+        console.error("Error loading cities", e);
+        citySelect.innerHTML = '<option value="">Error loading.</option>';
+    }
+}
+
+async function onCityChange() {
+    const citySelect = document.getElementById('city');
+    const barangaySelect = document.getElementById('barangay');
+    
+    barangaySelect.innerHTML = '<option value="">Loading Barangays...</option>';
+    
+    const selectedOption = citySelect.options[citySelect.selectedIndex];
+    const cityCode = selectedOption.dataset.code;
+    
+    if (!cityCode) {
+        barangaySelect.innerHTML = '<option value="">Select Barangay</option>';
+        return;
+    }
+    
+    try {
+        const response = await fetch(`https://psgc.gitlab.io/api/cities-municipalities/${cityCode}/barangays/`);
+        const barangays = await response.json();
+        
+        barangays.sort((a, b) => a.name.localeCompare(b.name));
+        
+        barangaySelect.innerHTML = '<option value="">Select Barangay</option>';
+        barangays.forEach(b => {
+            const option = document.createElement('option');
+            option.value = b.name;
+            option.innerText = b.name;
+            
+            if (savedBarangay && b.name.toLowerCase() === savedBarangay.toLowerCase()) {
+                option.selected = true;
+            }
+            barangaySelect.appendChild(option);
+        });
+    } catch (e) {
+        console.error("Error loading barangays", e);
+        barangaySelect.innerHTML = '<option value="">Error loading.</option>';
+    }
+}
+</script>
 
 </body>
 </html>

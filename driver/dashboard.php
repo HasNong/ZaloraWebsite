@@ -76,40 +76,139 @@ $approved_returns = $conn->query($query_returns);
     <link rel="stylesheet" href="../assets/css/seller.css">
     <style>
         .driver-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 40px; }
-        .d-metric-card { background: #fff; padding: 30px; border: 1px solid #eee; }
-        .d-metric-card.dark { background: #000; color: #fff; border: none; }
-        .d-metric-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #999; margin-bottom: 25px; display: block; }
+        .d-metric-card { 
+            background: var(--white); 
+            padding: 30px; 
+            border: 1px solid var(--border); 
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+            transition: var(--transition);
+        }
+        .d-metric-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-md);
+            border-color: var(--border-hover);
+        }
+        .d-metric-card.dark { 
+            background: var(--black); 
+            color: var(--white); 
+            border: none; 
+        }
+        .d-metric-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-light); margin-bottom: 25px; display: block; }
         .d-metric-card.dark .d-metric-label { color: #666; }
         .d-metric-value { font-size: 28px; font-weight: 800; margin: 0; }
-        .d-metric-sub { font-size: 11px; color: #999; margin-top: 10px; }
+        .d-metric-sub { font-size: 11px; color: var(--text-light); margin-top: 10px; }
 
         .dashboard-grid { display: grid; grid-template-columns: 1fr 380px; gap: 30px; }
         
         /* Next Stop Card */
-        .next-stop-card { background: #fff; border: 1px solid #eee; display: flex; overflow: hidden; margin-top: 20px; }
+        .next-stop-card { 
+            background: var(--white); 
+            border: 1px solid var(--border); 
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+            display: flex; 
+            overflow: hidden; 
+            margin-top: 20px; 
+            transition: var(--transition);
+        }
+        .next-stop-card:hover {
+            box-shadow: var(--shadow-md);
+        }
         .ns-img { width: 300px; height: 320px; object-fit: cover; }
         .ns-content { flex-grow: 1; padding: 40px; position: relative; }
-        .badge-next { background: #000; color: #fff; padding: 4px 10px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; }
-        .order-tag { font-size: 11px; font-weight: 700; color: #999; text-align: right; float: right; }
+        .badge-next { 
+            background: var(--black); 
+            color: var(--white); 
+            padding: 4px 10px; 
+            font-size: 10px; 
+            font-weight: 800; 
+            text-transform: uppercase; 
+            letter-spacing: 0.1em; 
+            border-radius: var(--radius-sm);
+        }
+        .order-tag { font-size: 11px; font-weight: 700; color: var(--text-light); text-align: right; float: right; }
         .ns-address { font-size: 20px; font-weight: 700; margin: 30px 0 15px; }
-        .ns-notes { font-size: 13px; color: #666; line-height: 1.6; margin-bottom: 30px; }
+        .ns-notes { font-size: 13px; color: var(--text-muted); line-height: 1.6; margin-bottom: 30px; }
         .ns-actions { display: flex; gap: 15px; }
-        .btn-nav { flex-grow: 1; background: #000; color: #fff; border: none; padding: 18px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
-        .btn-delivered { flex-grow: 1; background: #22c55e; color: #fff; border: none; padding: 18px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
-        .btn-call { width: 60px; background: #fff; border: 1px solid #000; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        .btn-nav { 
+            flex-grow: 1; 
+            background: var(--black); 
+            color: var(--white); 
+            border: none; 
+            padding: 18px; 
+            font-weight: 700; 
+            text-transform: uppercase; 
+            cursor: pointer; 
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+        }
+        .btn-nav:hover {
+            opacity: 0.85;
+            transform: translateY(-1px);
+        }
+        .btn-delivered { 
+            flex-grow: 1; 
+            background: var(--accent-green); 
+            color: var(--white); 
+            border: none; 
+            padding: 18px; 
+            font-weight: 700; 
+            text-transform: uppercase; 
+            cursor: pointer; 
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+        }
+        .btn-delivered:hover {
+            opacity: 0.85;
+            transform: translateY(-1px);
+        }
+        .btn-call { 
+            width: 60px; 
+            background: var(--white); 
+            border: 1px solid var(--black); 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            cursor: pointer; 
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+        }
+        .btn-call:hover {
+            background: #fafafa;
+        }
 
         /* Map Card */
-        .map-card { background: #eee; height: 400px; position: relative; border: 1px solid #ddd; overflow: hidden; }
-        .map-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #000; color: #fff; padding: 10px 20px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer; }
+        .map-card { 
+            background: #eee; 
+            height: 400px; 
+            position: relative; 
+            border: 1px solid var(--border); 
+            border-radius: var(--radius-md);
+            overflow: hidden; 
+        }
+        .map-overlay { 
+            position: absolute; 
+            top: 50%; 
+            left: 50%; 
+            transform: translate(-50%, -50%); 
+            background: var(--black); 
+            color: var(--white); 
+            padding: 10px 20px; 
+            font-size: 10px; 
+            font-weight: 700; 
+            text-transform: uppercase; 
+            letter-spacing: 0.1em; 
+            cursor: pointer; 
+            border-radius: var(--radius-sm);
+        }
 
         /* Payouts */
         .payout-list { margin-top: 30px; }
-        .payout-row { display: flex; justify-content: space-between; padding: 20px 0; border-bottom: 1px solid #f9f9f9; }
+        .payout-row { display: flex; justify-content: space-between; padding: 20px 0; border-bottom: 1px solid var(--border); }
         .payout-info h4 { font-size: 14px; margin-bottom: 4px; }
-        .payout-info p { font-size: 10px; color: #999; text-transform: uppercase; font-weight: 700; }
+        .payout-info p { font-size: 10px; color: var(--text-light); text-transform: uppercase; font-weight: 700; }
         .payout-amount { font-size: 15px; font-weight: 700; }
-
-        .btn-go-online { width: 100%; background: #000; color: #fff; border: none; padding: 15px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
     </style>
 </head>
 <body>

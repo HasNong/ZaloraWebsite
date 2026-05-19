@@ -64,7 +64,7 @@ while($c = $cat_res->fetch_assoc()) {
 <div class="main-content">
     <header class="header">
         <h1 class="page-title">Dashboard Overview</h1>
-        <div style="font-size: 12px; color: #888;">Logged in as: <strong><?= htmlspecialchars($_SESSION['admin_email']) ?></strong></div>
+        <div style="font-size: 12px; color: #888;">Logged in as: <strong><?= htmlspecialchars($_SESSION['user_email'] ?? 'admin@zalora.com') ?></strong></div>
     </header>
 
     <div class="stats-grid" style="grid-template-columns: repeat(5, 1fr);">
