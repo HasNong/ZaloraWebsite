@@ -87,7 +87,7 @@ if (!empty($seller['Sell_BusinessName'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Seller Center - Profile</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/seller.css">
     <style>
         .profile-container {
@@ -101,6 +101,12 @@ if (!empty($seller['Sell_BusinessName'])) {
             display: flex;
             gap: 3rem;
             align-items: flex-start;
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+            transition: var(--transition);
+        }
+        .profile-card:hover {
+            box-shadow: var(--shadow-md);
         }
         .profile-avatar {
             width: 120px;
@@ -126,8 +132,8 @@ if (!empty($seller['Sell_BusinessName'])) {
         }
         .profile-badge {
             display: inline-block;
-            background: #dcfce7;
-            color: var(--accent-green);
+            background: var(--accent-green-bg);
+            color: var(--accent-green-text);
             padding: 4px 10px;
             font-size: 10px;
             font-weight: 600;
@@ -160,6 +166,12 @@ if (!empty($seller['Sell_BusinessName'])) {
             border: 1px solid var(--border-color);
             padding: 3rem;
             margin-bottom: 2rem;
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+            transition: var(--transition);
+        }
+        .settings-card:hover {
+            box-shadow: var(--shadow-md);
         }
         .settings-title {
             font-size: 14px;
@@ -167,7 +179,7 @@ if (!empty($seller['Sell_BusinessName'])) {
             text-transform: uppercase;
             letter-spacing: 0.05em;
             margin-bottom: 2rem;
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid var(--border-color);
             padding-bottom: 10px;
         }
         .form-row {
@@ -191,11 +203,12 @@ if (!empty($seller['Sell_BusinessName'])) {
         .form-control {
             width: 100%;
             padding: 12px 15px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
             font-size: 13px;
             outline: none;
             font-family: inherit;
+            transition: var(--transition);
         }
         .form-control:focus {
             border-color: #000;
@@ -211,12 +224,14 @@ if (!empty($seller['Sell_BusinessName'])) {
             text-transform: uppercase;
             letter-spacing: 0.1em;
             cursor: pointer;
-            transition: 0.2s;
+            transition: var(--transition);
             width: fit-content;
+            border-radius: var(--radius-sm);
         }
         .btn-primary-custom:hover {
             background: #fff;
             color: #000;
+            transform: translateY(-1px);
         }
 
         .danger-zone {

@@ -500,7 +500,7 @@ if ($result) {
         <div style="flex:1; display:flex; gap:10px; overflow:hidden;">
             <img src="https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=400&q=80" style="width:20%; height:150px; object-fit:cover;" alt="Banner 1">
             <img src="https://images.unsplash.com/photo-1544441893-675973e31985?w=400&q=80" style="width:20%; height:150px; object-fit:cover;" alt="Banner 2">
-            <img src="https://images.unsplash.com/photo-1445205170230-053b830c6039?w=400&q=80" style="width:20%; height:150px; object-fit:cover;" alt="Banner 3">
+            <img src="../assets/images/banner_3.png" style="width:20%; height:150px; object-fit:cover;" alt="Banner 3">
             <img src="https://images.unsplash.com/photo-1532453288672-3a27e9be9efd?w=400&q=80" style="width:20%; height:150px; object-fit:cover;" alt="Banner 4">
             <img src="https://images.unsplash.com/photo-1581044777550-4cfa60707c03?w=400&q=80" style="width:20%; height:150px; object-fit:cover;" alt="Banner 5">
         </div>

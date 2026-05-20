@@ -151,7 +151,7 @@ $products = $conn->query($prod_query);
 <section class="main-hero">
     <div class="hero-card">
         <div class="hero-image-side">
-            <img src="https://images.unsplash.com/photo-1539109132304-3915502ad33d?w=1200&q=80" alt="H&M Payday Party">
+            <img src="assets/images/hm_payday_party.png" alt="H&M Payday Party">
         </div>
         <div class="hero-text-side">
             <p class="hero-tag">PAYDAY PARTY</p>
@@ -182,7 +182,7 @@ $products = $conn->query($prod_query);
         </div>
     </div>
     <div class="deal-card">
-        <img src="https://images.unsplash.com/photo-1445205170230-053b830c6039?w=600&q=80" alt="Puma">
+        <img src="assets/images/puma_deal.png" alt="Puma">
         <div class="deal-overlay">
             <p class="deal-offer">UP TO 50% OFF</p>
         </div>

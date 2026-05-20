@@ -391,7 +391,7 @@ $user_name = $_SESSION['user_name'] ?? 'User';
             <li><a href="#">My Wallet</a></li>
             <li><a href="#">My Cashback</a></li>
             <li><a href="#">My ZVIP</a></li>
-            <li><a href="#">Orders & Tracking</a></li>
+            <li><a href="profile.php?tab=orders">Orders & Tracking</a></li>
             <li><a href="#">My Reviews</a></li>
             <li><a href="#">My Cards</a></li>
             <li><a href="#">Preferences</a></li>

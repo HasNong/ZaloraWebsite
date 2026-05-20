@@ -25,7 +25,7 @@ function award_points($conn, $cust_id, $order_id, $points) {
     $id = ($res_id->fetch_assoc()['max_id'] ?? 0) + 1;
     
     $stmt = $conn->prepare("INSERT INTO loyalty_points (Loyal_Id, Cust_Id, Order_Id, Loyal_TransType, Loyal_Points, Loyal_Balance_after, Loyal_CreatedAt) VALUES (?, ?, ?, 'EARNED', ?, ?, NOW())");
-    $stmt->bind_param("iiiiii", $id, $cust_id, $order_id, $points, $new_bal);
+    $stmt->bind_param("iiidd", $id, $cust_id, $order_id, $points, $new_bal);
     return $stmt->execute();
 }
 
@@ -44,7 +44,7 @@ function deduct_points($conn, $cust_id, $points) {
     $id = ($res_id->fetch_assoc()['max_id'] ?? 0) + 1;
     
     $stmt = $conn->prepare("INSERT INTO loyalty_points (Loyal_Id, Cust_Id, Loyal_TransType, Loyal_Points, Loyal_Balance_after, Loyal_CreatedAt) VALUES (?, ?, 'REDEEMED', ?, ?, NOW())");
-    $stmt->bind_param("iiii", $id, $cust_id, $points, $new_bal);
+    $stmt->bind_param("iidd", $id, $cust_id, $points, $new_bal);
     return $stmt->execute();
 }
 ?>

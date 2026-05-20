@@ -71,43 +71,193 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
 <head>
     <meta charset="UTF-8"/>
     <title>ZALORA — Order #<?= $order_id ?></title>
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
     <link rel="stylesheet" href="../assets/css/global.css"/>
     <style>
-        body { background: #f9f9f9; font-family: 'Montserrat', sans-serif; }
+        :root {
+            --black: #000000;
+            --white: #ffffff;
+            --background: #fdfdfd;
+            --border: rgba(0,0,0,0.06);
+            --border-light: rgba(0,0,0,0.03);
+            --text-dark: #111111;
+            --text-light: #777777;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 18px;
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.03);
+            --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.06);
+            --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            --accent-green-bg: #e6fffa;
+            --accent-green-text: #2e7d32;
+            --accent-red-bg: #fdf2f2;
+            --accent-red-text: #c53030;
+        }
+        
+        body { background: #fafafa; font-family: 'Outfit', sans-serif; color: var(--text-dark); margin: 0; padding: 0; }
         .detail-container { max-width: 800px; margin: 40px auto; padding: 0 20px; }
-        .back-link { display: inline-block; margin-bottom: 20px; color: #666; text-decoration: none; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; }
-        .back-link:hover { color: #000; }
-        .order-header { background: #fff; padding: 30px; border: 1px solid #eee; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
-        .order-id { font-size: 20px; font-weight: 700; margin-bottom: 5px; }
-        .order-date { font-size: 12px; color: #999; }
-        .status-badge { background: #000; color: #fff; padding: 8px 15px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
+        .back-link { display: inline-block; margin-bottom: 20px; color: var(--text-light); text-decoration: none; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; transition: var(--transition); }
+        .back-link:hover { color: var(--black); }
         
-        .card { background: #fff; border: 1px solid #eee; padding: 30px; margin-bottom: 20px; }
-        .card-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        .order-header { 
+            background: var(--white); 
+            padding: 30px; 
+            border: 1px solid var(--border); 
+            border-radius: var(--radius-md);
+            margin-bottom: 20px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            box-shadow: var(--shadow-sm);
+        }
+        .order-id { font-size: 20px; font-weight: 800; margin: 0 0 5px 0; letter-spacing: -0.02em; }
+        .order-date { font-size: 12px; color: var(--text-light); margin: 0; }
+        .status-badge { 
+            background: var(--black); 
+            color: var(--white); 
+            padding: 8px 16px; 
+            font-size: 10px; 
+            font-weight: 700; 
+            text-transform: uppercase; 
+            letter-spacing: 0.1em; 
+            border-radius: var(--radius-sm);
+        }
         
-        .item-row { display: grid; grid-template-columns: 80px 1fr 120px; gap: 20px; padding: 15px 0; border-bottom: 1px solid #fafafa; }
-        .item-img { width: 80px; height: 100px; object-fit: cover; }
-        .item-info h4 { font-size: 14px; margin-bottom: 5px; }
-        .item-variant { font-size: 11px; color: #888; }
-        .item-price { text-align: right; font-weight: 600; font-size: 14px; }
+        .card { 
+            background: var(--white); 
+            border: 1px solid var(--border); 
+            padding: 35px; 
+            margin-bottom: 20px; 
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+        }
+        .card-title { 
+            font-size: 11px; 
+            font-weight: 700; 
+            text-transform: uppercase; 
+            letter-spacing: 0.1em; 
+            margin: 0 0 25px 0; 
+            border-bottom: 1px solid var(--border); 
+            padding-bottom: 12px; 
+            color: var(--text-light);
+        }
         
-        .summary-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 10px; }
-        .total-row { display: flex; justify-content: space-between; font-weight: 700; font-size: 18px; margin-top: 15px; padding-top: 15px; border-top: 2px solid #eee; }
+        .item-row { display: grid; grid-template-columns: 80px 1fr 120px; gap: 20px; padding: 20px 0; border-bottom: 1px solid var(--border-light); }
+        .item-img { width: 80px; height: 100px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--border); }
+        .item-info h4 { font-size: 14px; font-weight: 700; margin: 0 0 5px 0; }
+        .item-variant { font-size: 11px; color: var(--text-light); margin: 3px 0; }
+        .item-price { text-align: right; font-weight: 700; font-size: 14px; }
         
-        .shipping-info p { font-size: 13px; color: #666; line-height: 1.6; margin-bottom: 5px; }
-        .nav-logo { font-size: 24px; font-weight: 700; text-align: center; display: block; margin: 30px 0; text-decoration: none; color: #000; letter-spacing: 0.2em; }
+        .summary-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 10px; color: var(--text-light); }
+        .total-row { display: flex; justify-content: space-between; font-weight: 800; font-size: 18px; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border); color: var(--black); }
         
-        .btn-review { background: #eee; border: none; padding: 5px 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; cursor: pointer; margin-top: 10px; display: inline-block; }
-        .btn-review:hover { background: #000; color: #fff; }
+        .shipping-info p { font-size: 13px; color: #444; line-height: 1.6; margin: 0 0 5px 0; }
+        .nav-logo { font-size: 24px; font-weight: 800; text-align: center; display: block; margin: 30px 0; text-decoration: none; color: var(--black); letter-spacing: 0.25em; }
         
+        .btn-review { background: #f4f4f4; border: none; padding: 6px 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; cursor: pointer; margin-top: 10px; display: inline-block; border-radius: var(--radius-sm); transition: var(--transition); }
+        .btn-review:hover { background: var(--black); color: var(--white); }
+        
+        /* Stepper Tracking timeline styles */
+        .tracking-wrapper {
+            background: var(--white);
+            border: 1px solid var(--border);
+            padding: 30px;
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+            margin-bottom: 20px;
+        }
+        .stepper-container {
+            display: flex;
+            justify-content: space-between;
+            position: relative;
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+        .stepper-line {
+            position: absolute;
+            top: 15px;
+            left: 45px;
+            right: 45px;
+            height: 3px;
+            background: #eee;
+            z-index: 1;
+            border-radius: 2px;
+        }
+        .stepper-line-progress {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            background: var(--black);
+            transition: var(--transition);
+            border-radius: 2px;
+        }
+        .step-node {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            z-index: 2;
+            width: 90px;
+        }
+        .step-dot {
+            width: 30px;
+            height: 30px;
+            background: #f9f9f9;
+            border: 3px solid #eee;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 800;
+            color: var(--text-light);
+            transition: var(--transition);
+        }
+        .step-label {
+            margin-top: 10px;
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-light);
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            transition: var(--transition);
+        }
+        .step-subtext {
+            font-size: 9px;
+            color: var(--text-light);
+            margin-top: 2px;
+            text-align: center;
+        }
+        .step-node.active .step-dot {
+            background: var(--white);
+            border-color: var(--black);
+            color: var(--black);
+            box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.05);
+        }
+        .step-node.active .step-label {
+            color: var(--black);
+        }
+        .step-node.completed .step-dot {
+            background: var(--black);
+            border-color: var(--black);
+            color: var(--white);
+        }
+        .step-node.completed .step-label {
+            color: var(--black);
+        }
+
         /* Modal Styles */
-        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); }
-        .modal-content { background: #fff; width: 400px; margin: 100px auto; padding: 30px; position: relative; }
-        .modal-close { position: absolute; top: 15px; right: 20px; cursor: pointer; font-size: 24px; }
-        .review-form label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; margin-bottom: 8px; color: #999; }
-        .review-form select, .review-form textarea, .review-form input { width: 100%; padding: 12px; margin-bottom: 20px; border: 1px solid #eee; font-family: inherit; }
-        .btn-submit-review { width: 100%; background: #000; color: #fff; border: none; padding: 15px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); transition: var(--transition); }
+        .modal-content { background: var(--white); width: 400px; margin: 100px auto; padding: 35px; position: relative; border-radius: var(--radius-md); box-shadow: var(--shadow-md); border: 1px solid var(--border); }
+        .modal-close { position: absolute; top: 15px; right: 20px; cursor: pointer; font-size: 24px; color: var(--text-light); transition: var(--transition); }
+        .modal-close:hover { color: var(--black); }
+        .review-form label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; margin-bottom: 8px; color: var(--text-light); letter-spacing: 0.05em; }
+        .review-form select, .review-form textarea, .review-form input { width: 100%; padding: 12px; margin-bottom: 20px; border: 1px solid var(--border); font-family: inherit; border-radius: var(--radius-sm); outline: none; box-sizing: border-box; transition: var(--transition); }
+        .review-form select:focus, .review-form textarea:focus, .review-form input:focus { border-color: var(--black); }
+        .btn-submit-review { width: 100%; background: var(--black); color: var(--white); border: none; padding: 15px; font-weight: 700; text-transform: uppercase; cursor: pointer; border-radius: var(--radius-sm); transition: var(--transition); }
+        .btn-submit-review:hover { opacity: 0.9; }
     </style>
 </head>
 <body>
@@ -130,6 +280,84 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
         </div>
         <div class="status-badge"><?= $order['Order_Status'] ?></div>
     </div>
+
+    <?php
+    $status = strtoupper($order['Order_Status']);
+    $is_cancelled = ($status === 'CANCELLED');
+    $is_returned = ($status === 'RETURNED');
+
+    $step1_active = !$is_cancelled && !$is_returned;
+    $step1_completed = in_array($status, ['CONFIRMED', 'PACKED', 'SHIPPED', 'DELIVERED']);
+
+    $step2_active = in_array($status, ['CONFIRMED', 'PACKED', 'SHIPPED', 'DELIVERED']);
+    $step2_completed = in_array($status, ['SHIPPED', 'DELIVERED']);
+
+    $step3_active = in_array($status, ['SHIPPED', 'DELIVERED']);
+    $step3_completed = ($status === 'DELIVERED');
+
+    $step4_active = ($status === 'DELIVERED');
+    $step4_completed = ($status === 'DELIVERED');
+
+    if ($status === 'DELIVERED') {
+        $progress_pct = 100;
+    } elseif ($status === 'SHIPPED') {
+        $progress_pct = 66;
+    } elseif (in_array($status, ['CONFIRMED', 'PACKED'])) {
+        $progress_pct = 33;
+    } else {
+        $progress_pct = 0;
+    }
+    ?>
+
+    <!-- ORDER TRACKING TIMELINE -->
+    <?php if ($is_cancelled): ?>
+        <div class="tracking-wrapper" style="border-left: 5px solid var(--accent-red-text); background: var(--accent-red-bg);">
+            <h3 style="font-size: 13px; font-weight: 700; color: var(--accent-red-text); margin: 0 0 5px 0; text-transform: uppercase;">Order Cancelled</h3>
+            <p style="font-size: 12px; color: var(--accent-red-text); margin: 0; opacity: 0.8;">This order has been cancelled and will not be processed further. If you have any concerns, please contact support.</p>
+        </div>
+    <?php elseif ($is_returned): ?>
+        <div class="tracking-wrapper" style="border-left: 5px solid var(--accent-red-text); background: var(--accent-red-bg);">
+            <h3 style="font-size: 13px; font-weight: 700; color: var(--accent-red-text); margin: 0 0 5px 0; text-transform: uppercase;">Order Returned</h3>
+            <p style="font-size: 12px; color: var(--accent-red-text); margin: 0; opacity: 0.8;">The items in this order have been returned. Refund or exchange details have been sent to your email.</p>
+        </div>
+    <?php else: ?>
+        <div class="tracking-wrapper">
+            <div class="tracking-title">Track Shipment</div>
+            <div class="stepper-container">
+                <div class="stepper-line">
+                    <div class="stepper-line-progress" style="width: <?= $progress_pct ?>%;"></div>
+                </div>
+                
+                <!-- Step 1 -->
+                <div class="step-node <?= $step1_completed ? 'completed' : ($step1_active ? 'active' : '') ?>">
+                    <div class="step-dot">1</div>
+                    <div class="step-label">Placed</div>
+                    <div class="step-subtext"><?= date('M d', strtotime($order['Order_PlacedAt'])) ?></div>
+                </div>
+                
+                <!-- Step 2 -->
+                <div class="step-node <?= $step2_completed ? 'completed' : ($step2_active ? 'active' : '') ?>">
+                    <div class="step-dot">2</div>
+                    <div class="step-label">Confirmed</div>
+                    <div class="step-subtext"><?= in_array($status, ['CONFIRMED', 'PACKED', 'SHIPPED', 'DELIVERED']) ? 'Processed' : 'Pending' ?></div>
+                </div>
+                
+                <!-- Step 3 -->
+                <div class="step-node <?= $step3_completed ? 'completed' : ($step3_active ? 'active' : '') ?>">
+                    <div class="step-dot">3</div>
+                    <div class="step-label">Shipped</div>
+                    <div class="step-subtext"><?= in_array($status, ['SHIPPED', 'DELIVERED']) ? 'In Transit' : 'Awaiting' ?></div>
+                </div>
+                
+                <!-- Step 4 -->
+                <div class="step-node <?= $step4_completed ? 'completed' : ($step4_active ? 'active' : '') ?>">
+                    <div class="step-dot">4</div>
+                    <div class="step-label">Delivered</div>
+                    <div class="step-subtext"><?= ($status === 'DELIVERED' && isset($order['Ship_DeliveredAt']) && $order['Ship_DeliveredAt']) ? date('M d', strtotime($order['Ship_DeliveredAt'])) : 'Expected' ?></div>
+                </div>
+            </div>
+        </div>
+    <?php endif; ?>
 
     <div class="card">
         <h2 class="card-title">Order Items</h2>

@@ -1,8 +1,5 @@
 <?php
 include 'config/db.php';
-echo "--- CUSTOMER SCHEMA ---\n";
-$res = $conn->query("DESCRIBE customer");
-while($row = $res->fetch_assoc()) {
-    echo $row['Field'] . " (" . $row['Type'] . ")\n";
-}
+$res = $conn->query("SELECT * FROM customer WHERE Cust_Email = 'malalayhansong13@gmail.com'");
+print_r($res->fetch_assoc());
 ?>

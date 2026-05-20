@@ -186,7 +186,7 @@ $count = count($wish_items);
         <a href="#" class="sidebar-link">My Wallet</a>
         <a href="#" class="sidebar-link">My Cashback</a>
         <a href="#" class="sidebar-link">My ZVIP</a>
-        <a href="#" class="sidebar-link">Orders & Tracking</a>
+        <a href="profile.php?tab=orders" class="sidebar-link">Orders & Tracking</a>
         <a href="#" class="sidebar-link">My Reviews</a>
         <a href="#" class="sidebar-link">My Cards</a>
         <a href="#" class="sidebar-link">Preferences</a>

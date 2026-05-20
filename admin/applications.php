@@ -135,61 +135,70 @@ $past_apps = $conn->query("SELECT a.*, c.Cust_Firstname, c.Cust_Lastname, c.Cust
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Role Applications - Zalora Admin</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/admin.css">
     <style>
         .app-details-box {
             font-size: 11px;
-            background: #fdfdfd;
-            border: 1px dashed #ccc;
-            border-radius: 6px;
-            padding: 8px 12px;
-            margin-top: 4px;
+            background: var(--background);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            padding: 10px 14px;
+            margin-top: 6px;
             line-height: 1.5;
+            color: var(--text-muted);
         }
         .btn-action {
             border: none;
             padding: 8px 15px;
-            border-radius: 4px;
+            border-radius: var(--radius-sm);
             font-size: 11px;
             font-weight: 700;
             cursor: pointer;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            transition: 0.2s;
+            transition: var(--transition);
         }
         .btn-approve {
-            background: #2ecc71;
-            color: #fff;
+            background: var(--accent-green-bg);
+            color: var(--accent-green-text);
+            border: 1px solid rgba(0, 0, 0, 0.02);
         }
-        .btn-approve:hover { background: #27ae60; }
+        .btn-approve:hover { 
+            opacity: 0.85;
+            transform: translateY(-1px);
+        }
         .btn-reject {
-            background: #e74c3c;
-            color: #fff;
+            background: var(--accent-red-bg);
+            color: var(--accent-red-text);
+            border: 1px solid rgba(0, 0, 0, 0.02);
         }
-        .btn-reject:hover { background: #c0391b; }
+        .btn-reject:hover { 
+            opacity: 0.85;
+            transform: translateY(-1px);
+        }
         
         .badge {
             display: inline-block;
             padding: 4px 8px;
-            border-radius: 4px;
+            border-radius: var(--radius-sm);
             font-size: 10px;
             font-weight: 700;
             text-transform: uppercase;
         }
-        .badge-pending { background: #f1c40f; color: #fff; }
-        .badge-approved { background: #2ecc71; color: #fff; }
-        .badge-rejected { background: #e74c3c; color: #fff; }
-
+        .badge-pending { background: rgba(241, 196, 15, 0.1); color: #d4ac0d; }
+        .badge-approved { background: var(--accent-green-bg); color: var(--accent-green-text); }
+        .badge-rejected { background: var(--accent-red-bg); color: var(--accent-red-text); }
+ 
         .alert-box {
             padding: 12px 20px;
-            border-radius: 6px;
+            border-radius: var(--radius-sm);
             font-size: 13px;
             margin-bottom: 25px;
             font-weight: 600;
         }
-        .alert-success { background: #eafaf1; color: #2b8a73; border: 1px solid #d1f2e1; }
-        .alert-error { background: #fdf2f2; color: #9b1c1c; border: 1px solid #fde8e8; }
+        .alert-success { background: var(--accent-green-bg); color: var(--accent-green-text); border: 1px solid rgba(0, 0, 0, 0.02); }
+        .alert-error { background: var(--accent-red-bg); color: var(--accent-red-text); border: 1px solid rgba(0, 0, 0, 0.02); }
     </style>
 </head>
 <body>

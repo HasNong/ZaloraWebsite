@@ -155,7 +155,7 @@ if (isset($_POST['place_order'])) {
             $conn->query("DELETE ci FROM CART_ITEM ci JOIN CART c ON ci.Cart_Id = c.Cart_Id WHERE c.Cust_Id = $cust_id");
 
             $conn->commit();
-            header("Location: profile.php?order=success");
+            header("Location: profile.php?tab=orders&order=success");
             exit();
         } catch (Exception $e) {
             $conn->rollback();

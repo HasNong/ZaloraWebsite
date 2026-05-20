@@ -23,6 +23,7 @@ $user = [
 
 $msg = $_GET['msg'] ?? '';
 $msg_type = $_GET['type'] ?? '';
+$active_tab = $_GET['tab'] ?? 'account';
 
 // Handle save/update address
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'save_address') {
@@ -70,6 +71,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             }
         }
 
+        header("Location: profile.php?msg=" . urlencode($msg) . "&type=" . $msg_type);
+        exit;
+    }
+}
+
+// Handle save/update profile
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'save_profile') {
+    $first_name = trim($_POST['first_name'] ?? '');
+    $last_name = trim($_POST['last_name'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $phone_number = trim($_POST['phone_number'] ?? '');
+    $new_password = $_POST['new_password'] ?? '';
+    $current_password = $_POST['current_password'] ?? '';
+
+    if ($first_name && $last_name && $email && $current_password) {
+        if (password_verify($current_password, $cust_data['Cust_PsswdHash'])) {
+            if (!empty($new_password)) {
+                $new_hash = password_hash($new_password, PASSWORD_DEFAULT);
+                $upd_stmt = $conn->prepare("UPDATE CUSTOMER SET Cust_Firstname = ?, Cust_Lastname = ?, Cust_Email = ?, Cust_Number = ?, Cust_PsswdHash = ?, Cust_UpdatedAt = NOW() WHERE Cust_Id = ?");
+                $upd_stmt->bind_param("sssssi", $first_name, $last_name, $email, $phone_number, $new_hash, $customer_id);
+            } else {
+                $upd_stmt = $conn->prepare("UPDATE CUSTOMER SET Cust_Firstname = ?, Cust_Lastname = ?, Cust_Email = ?, Cust_Number = ?, Cust_UpdatedAt = NOW() WHERE Cust_Id = ?");
+                $upd_stmt->bind_param("ssssi", $first_name, $last_name, $email, $phone_number, $customer_id);
+            }
+
+            if ($upd_stmt->execute()) {
+                $msg = "Profile details updated successfully!";
+                $msg_type = "success";
+            } else {
+                $msg = "Error updating profile details: " . $conn->error;
+                $msg_type = "error";
+            }
+        } else {
+            $msg = "Incorrect current password!";
+            $msg_type = "error";
+        }
         header("Location: profile.php?msg=" . urlencode($msg) . "&type=" . $msg_type);
         exit;
     }
@@ -432,6 +469,64 @@ $address = $stmt_ad->get_result()->fetch_assoc();
             font-weight: 800;
             font-size: 20px;
         }
+
+        /* Order Tracking styling */
+        .order-card {
+            border: 1px solid #eaeaea;
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .order-card:hover {
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            border-color: #ccc;
+        }
+        .order-meta h5 {
+            margin: 0 0 5px 0;
+            font-size: 14px;
+            font-weight: 700;
+        }
+        .order-meta p {
+            margin: 0 0 4px 0;
+            font-size: 12px;
+            color: #666;
+        }
+        .order-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-radius: 4px;
+        }
+        .order-badge.pending { background: #fff8e1; color: #b78103; }
+        .order-badge.confirmed { background: #e3f2fd; color: #0d47a1; }
+        .order-badge.packed { background: #efebe9; color: #4e342e; }
+        .order-badge.shipped { background: #e0f2f1; color: #004d40; }
+        .order-badge.delivered { background: #e8f5e9; color: #1b5e20; }
+        .order-badge.cancelled { background: #ffebee; color: #c62828; }
+        .order-badge.returned { background: #f3e5f5; color: #4a148c; }
+        .btn-track {
+            background: #000;
+            color: #fff;
+            padding: 10px 18px;
+            text-transform: uppercase;
+            font-size: 10px;
+            font-weight: 700;
+            text-decoration: none;
+            letter-spacing: 0.05em;
+            transition: all 0.2s;
+            border-radius: 6px;
+            display: inline-block;
+        }
+        .btn-track:hover {
+            background: #333;
+        }
     </style>
 </head>
 <body>
@@ -501,11 +596,11 @@ $address = $stmt_ad->get_result()->fetch_assoc();
     <aside class="sidebar">
         <h4>MY ACCOUNT</h4>
         <ul class="sidebar-menu">
-            <li><a href="#" class="active">Account information</a></li>
+            <li><a href="profile.php" class="<?= $active_tab === 'account' ? 'active' : '' ?>">Account information</a></li>
             <li><a href="#">My Wallet</a></li>
             <li><a href="#">My Cashback</a></li>
             <li><a href="#">My ZVIP</a></li>
-            <li><a href="#">Orders & Tracking</a></li>
+            <li><a href="profile.php?tab=orders" class="<?= $active_tab === 'orders' ? 'active' : '' ?>">Orders & Tracking</a></li>
             <li><a href="#">My Reviews</a></li>
             <li><a href="#">My Cards</a></li>
             <li><a href="#">Preferences</a></li>
@@ -519,79 +614,127 @@ $address = $stmt_ad->get_result()->fetch_assoc();
 
     <!-- CONTENT -->
     <main class="content-area">
-        <!-- Personal Details -->
-        <div class="profile-card">
-            <div class="card-header">
-                <div class="card-title">
-                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                    Personal details
-                </div>
-                <a href="#" class="card-action-link">Edit</a>
-            </div>
-            <div class="details-grid">
-                <div class="detail-block">
-                    <span class="detail-label">Email Address</span>
-                    <span class="detail-value"><?= htmlspecialchars($user['email']) ?></span>
-                </div>
-                <div class="detail-block">
-                    <span class="detail-label">Name</span>
-                    <span class="detail-value"><?= htmlspecialchars($user['name']) ?></span>
-                </div>
-                <div class="detail-block">
-                    <span class="detail-label">Birthday</span>
-                    <span class="detail-value">-</span>
-                </div>
-                <div class="detail-block">
-                    <span class="detail-label">Password</span>
-                    <span class="detail-value">**********</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Saved Addresses -->
-        <div class="profile-card">
-            <?php if (!empty($msg)): ?>
-                <div class="alert-toast"><?= htmlspecialchars($msg) ?></div>
-            <?php endif; ?>
-
-            <div class="card-header">
-                <div class="card-title">
-                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                    Saved Addresses (<?= $address ? 1 : 0 ?>)
-                </div>
-                <a href="#" class="card-action-link" onclick="openAddressModal(false); return false;">Add</a>
-            </div>
-            
-            <?php if($address): ?>
-                <div class="address-box">
-                    <button class="btn-edit-pencil" onclick="openAddressModal(true)">
-                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-                    </button>
-                    <div class="address-name">
-                        <?= htmlspecialchars($address['Addrs_RcpntName'] ?? $user['name']) ?>
-                    </div>
-                    <div class="tag-row">
-                        <span class="addr-tag">Shipping Address</span>
-                        <span class="addr-tag" style="background:#e8f4fd; color:#2c82c9;">Billing Address</span>
-                    </div>
-                    <div class="address-text">
-                        <?= htmlspecialchars($address['Addrs_UnitNo'] ? $address['Addrs_UnitNo'].', ' : '') ?>
-                        <?= htmlspecialchars($address['Addrs_Street'] ?? '') ?>.<br>
-                        <?= htmlspecialchars($address['Addrs_Barangay'] ?? '') ?>. 
-                        <?= htmlspecialchars($address['Addrs_City'] ?? '') ?>.<br>
-                        <?= htmlspecialchars($address['Addrs_Province'] ?? '') ?>. 
-                        <?= htmlspecialchars($address['Addrs_ZipCode'] ?? '') ?><br>
-                        Phone: <?= htmlspecialchars($address['Addrs_Number'] ?? '') ?>
+        <?php if ($active_tab === 'orders'): ?>
+            <!-- Orders & Tracking List -->
+            <div class="profile-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2"/></svg>
+                        Orders & Tracking
                     </div>
                 </div>
-            <?php else: ?>
-                <div style="text-align: center; padding: 40px 20px; border: 1px dashed #ddd; border-radius: 12px;">
-                    <p style="font-size: 13px; color: #888; margin-bottom: 15px;">No shipping address saved yet.</p>
-                    <button type="button" class="btn-save" style="font-size: 11px;" onclick="openAddressModal(false)">Add Shipping Address</button>
-                </div>
-            <?php endif; ?>
-        </div>
 
+                <?php
+                $orders_stmt = $conn->prepare("SELECT * FROM ORDERS WHERE Cust_Id = ? ORDER BY Order_PlacedAt DESC");
+                $orders_stmt->bind_param("i", $customer_id);
+                $orders_stmt->execute();
+                $orders_res = $orders_stmt->get_result();
+
+                if ($orders_res->num_rows > 0):
+                    while ($ord = $orders_res->fetch_assoc()):
+                        $ord_id = $ord['Order_Id'];
+                        $ord_status = strtoupper($ord['Order_Status']);
+                        
+                        // Get total items quantity
+                        $count_res = $conn->query("SELECT SUM(OdItm_Quantity) as total_qty FROM ORDER_ITEM WHERE Order_Id = $ord_id");
+                        $total_qty = $count_res->fetch_assoc()['total_qty'] ?? 0;
+                        
+                        $status_class = strtolower($ord_status);
+                ?>
+                    <div class="order-card">
+                        <div class="order-meta">
+                            <h5>Order #<?= $ord_id ?></h5>
+                            <p>Placed on: <?= date('M d, Y', strtotime($ord['Order_PlacedAt'])) ?></p>
+                            <p>Items: <?= $total_qty ?> | Total: $<?= number_format($ord['Order_TotalAmnt'], 2) ?></p>
+                            <span class="order-badge <?= $status_class ?>"><?= $ord_status ?></span>
+                        </div>
+                        <div>
+                            <a href="order_details.php?id=<?= $ord_id ?>" class="btn-track">Track & View</a>
+                        </div>
+                    </div>
+                <?php 
+                    endwhile;
+                else: 
+                ?>
+                    <div style="text-align: center; padding: 40px 20px; border: 1px dashed #ddd; border-radius: 12px;">
+                        <p style="font-size: 13px; color: #888;">You have not placed any orders yet.</p>
+                    </div>
+                <?php endif; ?>
+            </div>
+        <?php else: ?>
+            <!-- Personal Details -->
+            <div class="profile-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        Personal details
+                    </div>
+                    <a href="#" class="card-action-link" onclick="openProfileModal(); return false;">Edit</a>
+                </div>
+                <div class="details-grid">
+                    <div class="detail-block">
+                        <span class="detail-label">Email Address</span>
+                        <span class="detail-value"><?= htmlspecialchars($user['email']) ?></span>
+                    </div>
+                    <div class="detail-block">
+                        <span class="detail-label">Name</span>
+                        <span class="detail-value"><?= htmlspecialchars($user['name']) ?></span>
+                    </div>
+                    <div class="detail-block">
+                        <span class="detail-label">Mobile Number</span>
+                        <span class="detail-value"><?= htmlspecialchars($cust_data['Cust_Number'] ?? '-') ?></span>
+                    </div>
+                    <div class="detail-block">
+                        <span class="detail-label">Password</span>
+                        <span class="detail-value">**********</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Saved Addresses -->
+            <div class="profile-card">
+                <?php if (!empty($msg)): ?>
+                    <div class="alert-toast"><?= htmlspecialchars($msg) ?></div>
+                <?php endif; ?>
+
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                        Saved Addresses (<?= $address ? 1 : 0 ?>)
+                    </div>
+                    <a href="#" class="card-action-link" onclick="openAddressModal(false); return false;">Add</a>
+                </div>
+                
+                <?php if($address): ?>
+                    <div class="address-box">
+                        <button class="btn-edit-pencil" onclick="openAddressModal(true)">
+                            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                        </button>
+                        <div class="address-name">
+                            <?= htmlspecialchars($address['Addrs_RcpntName'] ?? $user['name']) ?>
+                        </div>
+                        <div class="tag-row">
+                            <span class="addr-tag">Shipping Address</span>
+                            <span class="addr-tag" style="background:#e8f4fd; color:#2c82c9;">Billing Address</span>
+                        </div>
+                        <div class="address-text">
+                            <?= htmlspecialchars($address['Addrs_UnitNo'] ? $address['Addrs_UnitNo'].', ' : '') ?>
+                            <?= htmlspecialchars($address['Addrs_Street'] ?? '') ?>.<br>
+                            <?= htmlspecialchars($address['Addrs_Barangay'] ?? '') ?>. 
+                            <?= htmlspecialchars($address['Addrs_City'] ?? '') ?>.<br>
+                            <?= htmlspecialchars($address['Addrs_Province'] ?? '') ?>. 
+                            <?= htmlspecialchars($address['Addrs_ZipCode'] ?? '') ?><br>
+                            Phone: <?= htmlspecialchars($address['Addrs_Number'] ?? '') ?>
+                        </div>
+                    </div>
+                <?php else: ?>
+                    <div style="text-align: center; padding: 40px 20px; border: 1px dashed #ddd; border-radius: 12px;">
+                        <p style="font-size: 13px; color: #888; margin-bottom: 15px;">No shipping address saved yet.</p>
+                        <button type="button" class="btn-save" style="font-size: 11px;" onclick="openAddressModal(false)">Add Shipping Address</button>
+                    </div>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
     </main>
 </div>
 
@@ -711,10 +854,69 @@ $address = $stmt_ad->get_result()->fetch_assoc();
     </div>
 </div>
 
+<!-- Personal Details Modal Overlay -->
+<div id="profile-modal" class="modal-overlay">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h3>Edit Personal Details</h3>
+            <button type="button" class="close-btn" onclick="closeProfileModal()">&times;</button>
+        </div>
+        <form method="POST">
+            <input type="hidden" name="action" value="save_profile">
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="first_name">First Name *</label>
+                    <input type="text" id="first_name" name="first_name" class="form-control" required value="<?= htmlspecialchars($cust_data['Cust_Firstname'] ?? '') ?>">
+                </div>
+                <div class="form-group">
+                    <label for="last_name">Last Name *</label>
+                    <input type="text" id="last_name" name="last_name" class="form-control" required value="<?= htmlspecialchars($cust_data['Cust_Lastname'] ?? '') ?>">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="email">Email Address *</label>
+                    <input type="email" id="email" name="email" class="form-control" required value="<?= htmlspecialchars($cust_data['Cust_Email'] ?? '') ?>">
+                </div>
+                <div class="form-group">
+                    <label for="phone_number">Phone Number</label>
+                    <input type="text" id="phone_number" name="phone_number" class="form-control" placeholder="e.g. 0917XXXXXXX" value="<?= htmlspecialchars($cust_data['Cust_Number'] ?? '') ?>">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="new_password">New Password (leave blank to keep current)</label>
+                    <input type="password" id="new_password" name="new_password" class="form-control" placeholder="Enter new password">
+                </div>
+                <div class="form-group">
+                    <label for="current_password">Current Password * (to confirm changes)</label>
+                    <input type="password" id="current_password" name="current_password" class="form-control" required placeholder="Enter current password">
+                </div>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+                <button type="button" class="btn-cancel" onclick="closeProfileModal()">Cancel</button>
+                <button type="submit" class="btn-save">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 let savedProvince = "<?= addslashes($address['Addrs_Province'] ?? '') ?>";
 let savedCity = "<?= addslashes($address['Addrs_City'] ?? '') ?>";
 let savedBarangay = "<?= addslashes($address['Addrs_Barangay'] ?? '') ?>";
+
+function openProfileModal() {
+    document.getElementById('profile-modal').classList.add('active');
+}
+
+function closeProfileModal() {
+    document.getElementById('profile-modal').classList.remove('active');
+}
 
 function openAddressModal(isEdit = false) {
     document.getElementById('address-modal').classList.add('active');

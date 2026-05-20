@@ -26,17 +26,34 @@ $history = $stmt->get_result();
 <head>
     <meta charset="UTF-8">
     <title>Zalora Driver — History</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/seller.css">
     <style>
         .history-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 30px; }
-        .history-count { font-size: 11px; font-weight: 800; color: #999; text-transform: uppercase; letter-spacing: 0.1em; }
+        .history-count { font-size: 11px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.1em; }
         
-        .history-table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #eee; }
-        .history-table th { text-align: left; padding: 20px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #999; border-bottom: 1px solid #eee; }
-        .history-table td { padding: 25px 20px; border-bottom: 1px solid #f9f9f9; font-size: 13px; }
-        .status-check { color: #22c55e; font-weight: 800; font-size: 10px; text-transform: uppercase; display: flex; align-items: center; gap: 5px; }
-        .payout-tag { color: #22c55e; font-weight: 700; }
+        .history-table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            background: var(--white); 
+            border: 1px solid var(--border); 
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+        }
+        .history-table th { 
+            text-align: left; 
+            padding: 20px; 
+            font-size: 10px; 
+            font-weight: 700; 
+            text-transform: uppercase; 
+            letter-spacing: 0.1em; 
+            color: var(--text-light); 
+            border-bottom: 1px solid var(--border); 
+        }
+        .history-table td { padding: 25px 20px; border-bottom: 1px solid var(--border); font-size: 13px; }
+        .status-check { color: var(--accent-green-text); font-weight: 700; font-size: 10px; text-transform: uppercase; display: flex; align-items: center; gap: 5px; }
+        .payout-tag { color: var(--accent-green-text); font-weight: 700; }
     </style>
 </head>
 <body>

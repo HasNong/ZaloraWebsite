@@ -26,19 +26,60 @@ $queue = $stmt->get_result();
 <head>
     <meta charset="UTF-8">
     <title>Zalora Driver — My Queue</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/seller.css">
     <style>
         .queue-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 30px; }
-        .queue-count { font-size: 11px; font-weight: 800; color: #999; text-transform: uppercase; letter-spacing: 0.1em; }
+        .queue-count { font-size: 11px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.1em; }
         
-        .queue-table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #eee; }
-        .queue-table th { text-align: left; padding: 20px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #999; border-bottom: 1px solid #eee; }
-        .queue-table td { padding: 25px 20px; border-bottom: 1px solid #f9f9f9; font-size: 13px; }
-        .order-pill { background: #f4f4f4; padding: 4px 8px; font-size: 10px; font-weight: 700; border-radius: 4px; }
+        .queue-table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            background: var(--white); 
+            border: 1px solid var(--border); 
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+        }
+        .queue-table th { 
+            text-align: left; 
+            padding: 20px; 
+            font-size: 10px; 
+            font-weight: 700; 
+            text-transform: uppercase; 
+            letter-spacing: 0.1em; 
+            color: var(--text-light); 
+            border-bottom: 1px solid var(--border); 
+        }
+        .queue-table td { padding: 25px 20px; border-bottom: 1px solid var(--border); font-size: 13px; }
+        .order-pill { 
+            background: var(--background); 
+            padding: 4px 8px; 
+            font-size: 10px; 
+            font-weight: 700; 
+            border-radius: var(--radius-sm); 
+            border: 1px solid var(--border);
+        }
         .addr-main { font-weight: 700; display: block; margin-bottom: 5px; }
-        .addr-sub { font-size: 11px; color: #999; }
-        .btn-action { background: #000; color: #fff; border: none; padding: 10px 15px; font-size: 10px; font-weight: 700; cursor: pointer; text-transform: uppercase; text-decoration: none; display: inline-block; }
+        .addr-sub { font-size: 11px; color: var(--text-light); }
+        .btn-action { 
+            background: var(--black); 
+            color: var(--white); 
+            border: none; 
+            padding: 10px 15px; 
+            font-size: 10px; 
+            font-weight: 700; 
+            cursor: pointer; 
+            text-transform: uppercase; 
+            text-decoration: none; 
+            display: inline-block; 
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+        }
+        .btn-action:hover {
+            opacity: 0.85;
+            transform: translateY(-1px);
+        }
     </style>
 </head>
 <body>

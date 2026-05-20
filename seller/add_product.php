@@ -131,39 +131,68 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Seller Center - Add Product</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/seller.css">
     <style>
-        .form-card { background: white; padding: 2.5rem; border: 1px solid #eee; max-width: 900px; }
+        .form-card { 
+            background: var(--white); 
+            padding: 2.5rem; 
+            border: 1px solid var(--border); 
+            max-width: 900px; 
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+            transition: var(--transition);
+        }
+        .form-card:hover {
+            box-shadow: var(--shadow-md);
+        }
         .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem; }
         .form-group { margin-bottom: 1.5rem; }
-        .form-group label { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; color: #999; margin-bottom: 8px; text-transform: uppercase; }
+        .form-group label { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; color: var(--text-light); margin-bottom: 8px; text-transform: uppercase; }
         .form-group input, .form-group select, .form-group textarea { 
-            width: 100%; padding: 12px; border: 1px solid #e0e0e0; font-family: 'Inter', sans-serif; font-size: 13px; outline: none; transition: all 0.2s; box-sizing: border-box;
+            width: 100%; 
+            padding: 12px; 
+            border: 1px solid var(--border); 
+            font-family: inherit; 
+            font-size: 13px; 
+            outline: none; 
+            transition: var(--transition); 
+            box-sizing: border-box;
+            border-radius: var(--radius-sm);
         }
-        .form-group input:focus { border-color: #000; }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--black); }
         
         /* Dropzone */
         .upload-zone {
             width: 100%;
             height: 200px;
-            border: 2px dashed #eee;
+            border: 2px dashed var(--border);
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: var(--transition);
             position: relative;
             overflow: hidden;
-            background: #fafafa;
+            background: var(--background);
+            border-radius: var(--radius-sm);
         }
-        .upload-zone:hover { border-color: #000; background: #f4f4f4; }
-        .upload-zone.has-image { border-style: solid; border-color: #eee; }
+        .upload-zone:hover { border-color: var(--black); background: rgba(0,0,0,0.02); }
+        .upload-zone.has-image { border-style: solid; border-color: var(--border); }
         .upload-zone img { width: 100%; height: 100%; object-fit: contain; }
-        .upload-zone p { font-size: 11px; font-weight: 600; color: #999; margin-top: 10px; }
+        .upload-zone p { font-size: 11px; font-weight: 700; color: var(--text-light); margin-top: 10px; }
         
-        .alert { padding: 15px; margin-bottom: 2rem; font-size: 12px; font-weight: 600; border-left: 4px solid #000; background: #f9f9f9; }
+        .alert { 
+            padding: 15px; 
+            margin-bottom: 2rem; 
+            font-size: 12px; 
+            font-weight: 600; 
+            border-radius: var(--radius-sm);
+            background: var(--accent-red-bg); 
+            color: var(--accent-red-text);
+            border: 1px solid rgba(0,0,0,0.02); 
+        }
     </style>
 </head>
 <body>

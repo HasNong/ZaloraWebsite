@@ -27,20 +27,66 @@ $earnings = $stmt_earn->get_result()->fetch_assoc();
 <head>
     <meta charset="UTF-8">
     <title>Zalora Driver — Payouts</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/seller.css">
     <style>
         .payout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 40px; }
-        .balance-card { background: #000; color: #fff; padding: 40px; }
-        .balance-label { font-size: 11px; font-weight: 800; color: #666; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 30px; display: block; }
+        .balance-card { 
+            background: var(--black); 
+            color: var(--white); 
+            padding: 40px; 
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+            transition: var(--transition);
+        }
+        .balance-card:hover {
+            box-shadow: var(--shadow-md);
+            transform: translateY(-2px);
+        }
+        .balance-label { font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 30px; display: block; }
         .balance-value { font-size: 42px; font-weight: 800; margin: 0; }
-        .balance-btn { margin-top: 30px; background: #fff; color: #000; border: none; padding: 15px 30px; font-weight: 700; font-size: 11px; cursor: pointer; text-transform: uppercase; }
+        .balance-btn { 
+            margin-top: 30px; 
+            background: var(--white); 
+            color: var(--black); 
+            border: none; 
+            padding: 15px 30px; 
+            font-weight: 700; 
+            font-size: 11px; 
+            cursor: pointer; 
+            text-transform: uppercase; 
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+        }
+        .balance-btn:hover {
+            opacity: 0.9;
+        }
         
-        .stat-card { background: #fff; border: 1px solid #eee; padding: 40px; display: flex; flex-direction: column; justify-content: center; }
-        .stat-label { font-size: 11px; font-weight: 800; color: #999; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px; }
+        .stat-card { 
+            background: var(--white); 
+            border: 1px solid var(--border); 
+            padding: 40px; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+            transition: var(--transition);
+        }
+        .stat-card:hover {
+            box-shadow: var(--shadow-md);
+            transform: translateY(-2px);
+        }
+        .stat-label { font-size: 11px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px; }
         .stat-value { font-size: 28px; font-weight: 800; }
         
-        .payout-history { background: #fff; border: 1px solid #eee; padding: 40px; }
+        .payout-history { 
+            background: var(--white); 
+            border: 1px solid var(--border); 
+            padding: 40px; 
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+        }
     </style>
 </head>
 <body>

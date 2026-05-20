@@ -78,33 +78,70 @@ if (!$driver) {
 <head>
     <meta charset="UTF-8">
     <title>Zalora Driver — Settings</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/seller.css">
     <style>
         .settings-container { max-width: 800px; }
-        .settings-card { background: #fff; border: 1px solid #eee; padding: 40px; margin-bottom: 30px; }
+        .settings-card { 
+            background: var(--white); 
+            border: 1px solid var(--border); 
+            padding: 40px; 
+            margin-bottom: 30px; 
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+            transition: var(--transition);
+        }
+        .settings-card:hover {
+            box-shadow: var(--shadow-md);
+        }
         .settings-title {
-            font-size: 13px;
-            font-weight: 800;
+            font-size: 12px;
+            font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.05em;
             margin-bottom: 2rem;
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid var(--border);
             padding-bottom: 10px;
-            color: #111;
+            color: var(--text-main);
         }
         .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
         .form-group { display: flex; flex-direction: column; gap: 8px; }
-        .form-group label { font-size: 10px; font-weight: 800; color: #999; text-transform: uppercase; letter-spacing: 0.1em; }
-        .form-group input, .form-group select { width: 100%; padding: 12px 15px; border: 1px solid #eee; font-family: inherit; font-size: 13px; outline: none; border-radius: 4px; }
-        .form-group input:focus, .form-group select:focus { border-color: #000; }
+        .form-group label { font-size: 10px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.1em; }
+        .form-group input, .form-group select { 
+            width: 100%; 
+            padding: 12px 15px; 
+            border: 1px solid var(--border); 
+            font-family: inherit; 
+            font-size: 13px; 
+            outline: none; 
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+        }
+        .form-group input:focus, .form-group select:focus { border-color: var(--black); }
         
-        .btn-save { background: #000; color: #fff; border: 1px solid #000; padding: 14px 30px; font-weight: 700; text-transform: uppercase; cursor: pointer; transition: 0.2s; font-size: 11px; letter-spacing: 0.1em; width: fit-content; border-radius: 4px; }
-        .btn-save:hover { background: #fff; color: #000; }
+        .btn-save { 
+            background: var(--black); 
+            color: var(--white); 
+            border: 1px solid var(--black); 
+            padding: 14px 30px; 
+            font-weight: 700; 
+            text-transform: uppercase; 
+            cursor: pointer; 
+            transition: var(--transition);
+            font-size: 11px; 
+            letter-spacing: 0.1em; 
+            width: fit-content; 
+            border-radius: var(--radius-sm); 
+        }
+        .btn-save:hover { 
+            background: var(--white); 
+            color: var(--black); 
+            transform: translateY(-1px);
+        }
 
-        .alert { padding: 15px 20px; border-radius: 4px; font-size: 13px; margin-bottom: 30px; font-weight: 600; }
-        .alert-success { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
-        .alert-error { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
+        .alert { padding: 15px 20px; border-radius: var(--radius-sm); font-size: 13px; margin-bottom: 30px; font-weight: 600; }
+        .alert-success { background: var(--accent-green-bg); color: var(--accent-green-text); border: 1px solid rgba(0, 0, 0, 0.03); }
+        .alert-error { background: var(--accent-red-bg); color: var(--accent-red-text); border: 1px solid rgba(0, 0, 0, 0.03); }
     </style>
 </head>
 <body>
