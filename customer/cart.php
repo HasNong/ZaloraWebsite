@@ -13,32 +13,67 @@ $cust_id = $_SESSION['user_id'];
 $cart_items = [];
 
 // Fetch cart items from DB
-$query = "SELECT ci.CItm_Id, ci.CItm_Quantity, pv.PVar_Size, pv.PVar_Color, p.Prod_Name, p.Prod_BasePrice, 
-          (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id LIMIT 1) as Prod_Image
-          FROM CART c
-          JOIN CART_ITEM ci ON c.Cart_Id = ci.Cart_Id
-          JOIN PRODUCT_VARIANT pv ON ci.PVar_Id = pv.PVar_Id
-          JOIN PRODUCT p ON pv.Prod_Id = p.Prod_Id
-          WHERE c.Cust_Id = ?";
+$carts = $database->getReference('cart')->orderByChild('Cust_Id')->equalTo($cust_id)->getSnapshot()->getValue();
 
-$stmt = $conn->prepare($query);
-$stmt->bind_param("i", $cust_id);
-$stmt->execute();
-$result = $stmt->get_result();
+if ($carts) {
+    $cart_id = reset($carts)['Cart_Id'] ?? key($carts);
 
-while ($row = $result->fetch_assoc()) {
-    $img = $row['Prod_Image'] ?? "https://via.placeholder.com/400x500?text=No+Image";
-    if (!empty($row['Prod_Image']) && strpos($row['Prod_Image'], 'http') === false) {
-        $img = '../' . $row['Prod_Image'];
+    $items = $database->getReference('cart_item')->orderByChild('Cart_Id')->equalTo($cart_id)->getSnapshot()->getValue();
+    
+    if ($items) {
+        $allVariants = $database->getReference('product_variant')->getSnapshot()->getValue() ?: [];
+        $allProducts = $database->getReference('product')->getSnapshot()->getValue() ?: [];
+        $allImages = $database->getReference('product_image')->getSnapshot()->getValue() ?: [];
+
+        foreach ($items as $ci_key => $ci) {
+            $pvar_id = $ci['PVar_Id'] ?? '';
+            $qty = $ci['CItm_Quantity'] ?? 0;
+            $citm_id = $ci['CItm_Id'] ?? $ci_key;
+
+            $variant = null;
+            foreach ($allVariants as $v) {
+                if (($v['PVar_Id'] ?? '') == $pvar_id) {
+                    $variant = $v;
+                    break;
+                }
+            }
+
+            if ($variant) {
+                $prod_id = $variant['Prod_Id'] ?? '';
+                $product = null;
+                foreach ($allProducts as $p) {
+                    if (($p['Prod_Id'] ?? '') == $prod_id) {
+                        $product = $p;
+                        break;
+                    }
+                }
+
+                if ($product) {
+                    $prodImg = '';
+                    foreach ($allImages as $img) {
+                        if (($img['Prod_Id'] ?? '') == $prod_id) {
+                            $prodImg = $img['PImg_ImgUrl'] ?? '';
+                            break;
+                        }
+                    }
+
+                    $img = $prodImg ?: "https://via.placeholder.com/400x500?text=No+Image";
+                    if (!empty($prodImg) && strpos($prodImg, 'http') === false) {
+                        $img = '../' . $prodImg;
+                    }
+
+                    $cart_items[] = [
+                        "id"      => $citm_id,
+                        "name"    => $product['Prod_Name'] ?? '',
+                        "variant" => (!empty($variant['PVar_Color']) ? $variant['PVar_Color'] . " • " : "") . "Size " . ($variant['PVar_Size'] ?? ''),
+                        "price"   => floatval($product['Prod_BasePrice'] ?? 0),
+                        "qty"     => intval($qty),
+                        "img"     => $img,
+                    ];
+                }
+            }
+        }
     }
-    $cart_items[] = [
-        "id"      => $row['CItm_Id'],
-        "name"    => $row['Prod_Name'],
-        "variant" => ($row['PVar_Color'] ? $row['PVar_Color'] . " • " : "") . "Size " . $row['PVar_Size'],
-        "price"   => $row['Prod_BasePrice'],
-        "qty"     => $row['CItm_Quantity'],
-        "img"     => $img,
-    ];
 }
 
 $count = count($cart_items);
@@ -179,7 +214,7 @@ $total = $subtotal + $tax;
                         <p class="item-name" style="font-size:14px; margin-bottom:5px;"><?= htmlspecialchars($item['name']) ?></p>
                         <p class="item-variant" style="font-size:11px; color:#666; margin-bottom:15px;"><?= htmlspecialchars($item['variant']) ?></p>
                         <div class="item-actions">
-                            <button class="item-action-btn btn-remove" onclick="removeItem(<?= $item['id'] ?>)" style="font-size:11px; background:none; border:none; text-decoration:underline; cursor:pointer;">Remove</button>
+                            <button class="item-action-btn btn-remove" onclick="removeItem('<?= $item['id'] ?>')" style="font-size:11px; background:none; border:none; text-decoration:underline; cursor:pointer;">Remove</button>
                         </div>
                     </div>
                     <p class="item-price" id="price-<?= $item['id'] ?>" data-unit-price="<?= $item['price'] ?>" style="font-weight:600;">$<?= number_format($item['price'] * $item['qty'], 2) ?></p>

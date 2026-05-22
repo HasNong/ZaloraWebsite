@@ -11,10 +11,9 @@ if (!isset($_SESSION['user_id'])) {
 $customer_id = $_SESSION['user_id'];
 
 // 1. Fetch REAL Customer Data
-$stmt = $conn->prepare("SELECT * FROM CUSTOMER WHERE Cust_Id = ?");
-$stmt->bind_param("i", $customer_id);
-$stmt->execute();
-$cust_data = $stmt->get_result()->fetch_assoc();
+$custRef = $database->getReference('CUSTOMER')->orderByChild('Cust_Id')->equalTo($customer_id)->getSnapshot()->getValue();
+$cust_data = $custRef ? reset($custRef) : null;
+$cust_key = $custRef ? key($custRef) : null;
 
 $user = [
     "name"            => ($cust_data['Cust_Firstname'] ?? '') . ' ' . ($cust_data['Cust_Lastname'] ?? ''),
@@ -24,6 +23,20 @@ $user = [
 $msg = $_GET['msg'] ?? '';
 $msg_type = $_GET['type'] ?? '';
 $active_tab = $_GET['tab'] ?? 'account';
+
+// Fetch Address first so we can use it in both logic and view
+$addrRef = $database->getReference('ADDRESS')->orderByChild('Cust_Id')->equalTo($customer_id)->getSnapshot()->getValue();
+$address = null;
+$addr_key = null;
+if ($addrRef) {
+    foreach ($addrRef as $k => $a) {
+        if (($a['Addrs_IsDefault'] ?? 0) == 1) {
+            $address = $a;
+            $addr_key = $k;
+            break;
+        }
+    }
+}
 
 // Handle save/update address
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'save_address') {
@@ -37,38 +50,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $zip_code = trim($_POST['zip_code'] ?? '');
 
     if ($rcp_name && $phone && $street && $province && $city && $barangay && $zip_code) {
-        // Check if default address already exists
-        $check = $conn->prepare("SELECT Addrs_id FROM ADDRESS WHERE Cust_Id = ? AND Addrs_IsDefault = 1 LIMIT 1");
-        $check->bind_param("i", $customer_id);
-        $check->execute();
-        $res = $check->get_result()->fetch_assoc();
-
-        if ($res) {
-            // Update
-            $addr_id = $res['Addrs_id'];
-            $stmt_up = $conn->prepare("UPDATE ADDRESS SET Addrs_RcpntName = ?, Addrs_Number = ?, Addrs_UnitNo = ?, Addrs_Street = ?, Addrs_Province = ?, Addrs_City = ?, Addrs_Barangay = ?, Addrs_ZipCode = ? WHERE Addrs_id = ?");
-            $stmt_up->bind_param("ssssssssi", $rcp_name, $phone, $unit_no, $street, $province, $city, $barangay, $zip_code, $addr_id);
-            if ($stmt_up->execute()) {
+        try {
+            if ($address) {
+                // Update
+                $database->getReference('ADDRESS')->getChild($addr_key)->update([
+                    'Addrs_RcpntName' => $rcp_name,
+                    'Addrs_Number' => $phone,
+                    'Addrs_UnitNo' => $unit_no,
+                    'Addrs_Street' => $street,
+                    'Addrs_Province' => $province,
+                    'Addrs_City' => $city,
+                    'Addrs_Barangay' => $barangay,
+                    'Addrs_ZipCode' => $zip_code
+                ]);
                 $msg = "Address updated successfully!";
                 $msg_type = "success";
             } else {
-                $msg = "Error updating address: " . $conn->error;
-                $msg_type = "error";
-            }
-        } else {
-            // Insert
-            $res_id = $conn->query("SELECT MAX(Addrs_id) as max_id FROM ADDRESS");
-            $next_id = ($res_id->fetch_assoc()['max_id'] ?? 0) + 1;
-
-            $stmt_ins = $conn->prepare("INSERT INTO ADDRESS (Addrs_id, Cust_Id, Addrs_RcpntName, Addrs_Number, Addrs_UnitNo, Addrs_Street, Addrs_Province, Addrs_City, Addrs_Barangay, Addrs_ZipCode, Addrs_IsDefault, Addrs_CreatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())");
-            $stmt_ins->bind_param("iissssssss", $next_id, $customer_id, $rcp_name, $phone, $unit_no, $street, $province, $city, $barangay, $zip_code);
-            if ($stmt_ins->execute()) {
+                // Insert
+                $newAddr = $database->getReference('ADDRESS')->push();
+                $newAddr->set([
+                    'Addrs_id' => $newAddr->getKey(),
+                    'Cust_Id' => $customer_id,
+                    'Addrs_RcpntName' => $rcp_name,
+                    'Addrs_Number' => $phone,
+                    'Addrs_UnitNo' => $unit_no,
+                    'Addrs_Street' => $street,
+                    'Addrs_Province' => $province,
+                    'Addrs_City' => $city,
+                    'Addrs_Barangay' => $barangay,
+                    'Addrs_ZipCode' => $zip_code,
+                    'Addrs_IsDefault' => 1,
+                    'Addrs_CreatedAt' => date('Y-m-d H:i:s')
+                ]);
                 $msg = "Address saved successfully!";
                 $msg_type = "success";
-            } else {
-                $msg = "Error saving address: " . $conn->error;
-                $msg_type = "error";
             }
+        } catch (Exception $e) {
+            $msg = "Error updating address: " . $e->getMessage();
+            $msg_type = "error";
         }
 
         header("Location: profile.php?msg=" . urlencode($msg) . "&type=" . $msg_type);
@@ -85,23 +104,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $new_password = $_POST['new_password'] ?? '';
     $current_password = $_POST['current_password'] ?? '';
 
-    if ($first_name && $last_name && $email && $current_password) {
+    if ($first_name && $last_name && $email && $current_password && $cust_data) {
         if (password_verify($current_password, $cust_data['Cust_PsswdHash'])) {
+            $updateData = [
+                'Cust_Firstname' => $first_name,
+                'Cust_Lastname' => $last_name,
+                'Cust_Email' => $email,
+                'Cust_Number' => $phone_number,
+                'Cust_UpdatedAt' => date('Y-m-d H:i:s')
+            ];
+            
             if (!empty($new_password)) {
-                $new_hash = password_hash($new_password, PASSWORD_DEFAULT);
-                $upd_stmt = $conn->prepare("UPDATE CUSTOMER SET Cust_Firstname = ?, Cust_Lastname = ?, Cust_Email = ?, Cust_Number = ?, Cust_PsswdHash = ?, Cust_UpdatedAt = NOW() WHERE Cust_Id = ?");
-                $upd_stmt->bind_param("sssssi", $first_name, $last_name, $email, $phone_number, $new_hash, $customer_id);
-            } else {
-                $upd_stmt = $conn->prepare("UPDATE CUSTOMER SET Cust_Firstname = ?, Cust_Lastname = ?, Cust_Email = ?, Cust_Number = ?, Cust_UpdatedAt = NOW() WHERE Cust_Id = ?");
-                $upd_stmt->bind_param("ssssi", $first_name, $last_name, $email, $phone_number, $customer_id);
+                $updateData['Cust_PsswdHash'] = password_hash($new_password, PASSWORD_DEFAULT);
             }
-
-            if ($upd_stmt->execute()) {
-                $msg = "Profile details updated successfully!";
-                $msg_type = "success";
-            } else {
-                $msg = "Error updating profile details: " . $conn->error;
-                $msg_type = "error";
+            
+            if ($cust_key) {
+                try {
+                    $database->getReference('CUSTOMER')->getChild($cust_key)->update($updateData);
+                    $msg = "Profile details updated successfully!";
+                    $msg_type = "success";
+                } catch (Exception $e) {
+                    $msg = "Error updating profile details: " . $e->getMessage();
+                    $msg_type = "error";
+                }
             }
         } else {
             $msg = "Incorrect current password!";
@@ -111,13 +136,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         exit;
     }
 }
-
-// Fetch Address
-$addr_query = "SELECT * FROM ADDRESS WHERE Cust_Id = ? AND Addrs_IsDefault = 1 LIMIT 1";
-$stmt_ad = $conn->prepare($addr_query);
-$stmt_ad->bind_param("i", $customer_id);
-$stmt_ad->execute();
-$address = $stmt_ad->get_result()->fetch_assoc();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -625,27 +643,35 @@ $address = $stmt_ad->get_result()->fetch_assoc();
                 </div>
 
                 <?php
-                $orders_stmt = $conn->prepare("SELECT * FROM ORDERS WHERE Cust_Id = ? ORDER BY Order_PlacedAt DESC");
-                $orders_stmt->bind_param("i", $customer_id);
-                $orders_stmt->execute();
-                $orders_res = $orders_stmt->get_result();
+                $orders = $database->getReference('ORDERS')->orderByChild('Cust_Id')->equalTo($customer_id)->getSnapshot()->getValue();
 
-                if ($orders_res->num_rows > 0):
-                    while ($ord = $orders_res->fetch_assoc()):
+                if ($orders):
+                    // Sort by date descending
+                    usort($orders, function($a, $b) {
+                        return strtotime($b['Order_PlacedAt'] ?? 0) - strtotime($a['Order_PlacedAt'] ?? 0);
+                    });
+                    
+                    $allItemSnapshot = $database->getReference('ORDER_ITEM')->getSnapshot()->getValue();
+                    $allItems = $allItemSnapshot ?: [];
+
+                    foreach ($orders as $ord):
                         $ord_id = $ord['Order_Id'];
-                        $ord_status = strtoupper($ord['Order_Status']);
+                        $ord_status = strtoupper($ord['Order_Status'] ?? 'PENDING');
                         
-                        // Get total items quantity
-                        $count_res = $conn->query("SELECT SUM(OdItm_Quantity) as total_qty FROM ORDER_ITEM WHERE Order_Id = $ord_id");
-                        $total_qty = $count_res->fetch_assoc()['total_qty'] ?? 0;
+                        $total_qty = 0;
+                        foreach ($allItems as $oi) {
+                            if (($oi['Order_Id'] ?? '') == $ord_id) {
+                                $total_qty += intval($oi['OdItm_Quantity'] ?? 0);
+                            }
+                        }
                         
                         $status_class = strtolower($ord_status);
                 ?>
                     <div class="order-card">
                         <div class="order-meta">
                             <h5>Order #<?= $ord_id ?></h5>
-                            <p>Placed on: <?= date('M d, Y', strtotime($ord['Order_PlacedAt'])) ?></p>
-                            <p>Items: <?= $total_qty ?> | Total: $<?= number_format($ord['Order_TotalAmnt'], 2) ?></p>
+                            <p>Placed on: <?= date('M d, Y', strtotime($ord['Order_PlacedAt'] ?? time())) ?></p>
+                            <p>Items: <?= $total_qty ?> | Total: $<?= number_format($ord['Order_TotalAmnt'] ?? 0, 2) ?></p>
                             <span class="order-badge <?= $status_class ?>"><?= $ord_status ?></span>
                         </div>
                         <div>
@@ -653,7 +679,7 @@ $address = $stmt_ad->get_result()->fetch_assoc();
                         </div>
                     </div>
                 <?php 
-                    endwhile;
+                    endforeach;
                 else: 
                 ?>
                     <div style="text-align: center; padding: 40px 20px; border: 1px dashed #ddd; border-radius: 12px;">

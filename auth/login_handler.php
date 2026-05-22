@@ -28,16 +28,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         exit;
     }
 
-    // ── 2. CUSTOMER CHECK ──
-    $stmt = $conn->prepare("SELECT Cust_Id, Cust_Firstname, Cust_Lastname, Cust_PsswdHash FROM CUSTOMER WHERE Cust_Email = ? AND Cust_IsActive = 1");
-    $stmt->bind_param("s", $email);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    // Helper function to query Firebase
+    function findUserByEmail($db, $table, $emailField, $email) {
+        $snapshot = $db->getReference($table)->orderByChild($emailField)->equalTo($email)->getSnapshot();
+        if ($snapshot->hasChildren()) {
+            $users = $snapshot->getValue();
+            return reset($users); // Return the first matched user
+        }
+        return null;
+    }
 
-    if ($row = $result->fetch_assoc()) {
-        if (password_verify($password, $row['Cust_PsswdHash'])) {
-            $_SESSION['user_id'] = $row['Cust_Id'];
-            $_SESSION['user_name'] = trim($row['Cust_Firstname'] . ' ' . $row['Cust_Lastname']);
+    // ── 2. CUSTOMER CHECK ──
+    $customer = findUserByEmail($database, 'CUSTOMER', 'Cust_Email', $email);
+    if ($customer && (isset($customer['Cust_IsActive']) ? $customer['Cust_IsActive'] == 1 : true)) {
+        if (password_verify($password, $customer['Cust_PsswdHash'])) {
+            $_SESSION['user_id'] = $customer['Cust_Id'] ?? $customer['id'] ?? uniqid();
+            $_SESSION['user_name'] = trim(($customer['Cust_Firstname'] ?? '') . ' ' . ($customer['Cust_Lastname'] ?? ''));
             $_SESSION['user_email'] = $email;
             $_SESSION['role'] = 'customer';
             
@@ -47,15 +53,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 
     // ── 3. SELLER CHECK ──
-    $stmt = $conn->prepare("SELECT Sell_Id, Sell_BusinessName, Sell_PsswdHash FROM SELLER WHERE Sell_Email = ? AND Sell_IsActive = 1");
-    $stmt->bind_param("s", $email);
-    $stmt->execute();
-    $result = $stmt->get_result();
-
-    if ($row = $result->fetch_assoc()) {
-        if (password_verify($password, $row['Sell_PsswdHash'])) {
-            $_SESSION['user_id'] = $row['Sell_Id'];
-            $_SESSION['user_name'] = $row['Sell_BusinessName'];
+    $seller = findUserByEmail($database, 'SELLER', 'Sell_Email', $email);
+    if ($seller && (isset($seller['Sell_IsActive']) ? $seller['Sell_IsActive'] == 1 : true)) {
+        if (password_verify($password, $seller['Sell_PsswdHash'])) {
+            $_SESSION['user_id'] = $seller['Sell_Id'] ?? $seller['id'] ?? uniqid();
+            $_SESSION['user_name'] = $seller['Sell_BusinessName'] ?? '';
             $_SESSION['user_email'] = $email;
             $_SESSION['role'] = 'seller';
             
@@ -65,15 +67,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 
     // ── 4. DRIVER CHECK ──
-    $stmt = $conn->prepare("SELECT Driv_Id, Driv_FirstName, Driv_LastName, Driv_PsswdHash FROM driver WHERE Driv_Email = ? AND Driv_IsActive = 1");
-    $stmt->bind_param("s", $email);
-    $stmt->execute();
-    $result = $stmt->get_result();
-
-    if ($row = $result->fetch_assoc()) {
-        if (password_verify($password, $row['Driv_PsswdHash'])) {
-            $_SESSION['user_id'] = $row['Driv_Id'];
-            $_SESSION['user_name'] = trim($row['Driv_FirstName'] . ' ' . $row['Driv_LastName']);
+    $driver = findUserByEmail($database, 'driver', 'Driv_Email', $email);
+    if ($driver && (isset($driver['Driv_IsActive']) ? $driver['Driv_IsActive'] == 1 : true)) {
+        if (password_verify($password, $driver['Driv_PsswdHash'])) {
+            $_SESSION['user_id'] = $driver['Driv_Id'] ?? $driver['id'] ?? uniqid();
+            $_SESSION['user_name'] = trim(($driver['Driv_FirstName'] ?? '') . ' ' . ($driver['Driv_LastName'] ?? ''));
             $_SESSION['user_email'] = $email;
             $_SESSION['role'] = 'driver';
             

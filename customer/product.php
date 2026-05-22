@@ -11,18 +11,10 @@ if ($prod_id <= 0) {
 }
 
 // Fetch Product Details
-$query = "SELECT p.*, b.Brand_Name, c.Ctgry_Name 
-          FROM PRODUCT p 
-          JOIN BRAND b ON p.Brand_Id = b.Brand_Id 
-          JOIN CATEGORY c ON p.Ctgry_Id = c.Ctgry_Id 
-          WHERE p.Prod_Id = ? AND p.Prod_IsActive = 1";
+$products = $database->getReference('product')->orderByChild('Prod_Id')->equalTo($prod_id)->getSnapshot()->getValue();
+$product_data = $products ? reset($products) : null;
 
-$stmt = $conn->prepare($query);
-$stmt->bind_param("i", $prod_id);
-$stmt->execute();
-$product_res = $stmt->get_result();
-
-if ($product_res->num_rows === 0) {
+if (!$product_data || ($product_data['Prod_IsActive'] ?? 0) != 1) {
     // If not found, just use a dummy for the UI showcase
     $product_data = [
         'Ctgry_Name' => 'Jeans',
@@ -33,23 +25,25 @@ if ($product_res->num_rows === 0) {
         'Ctgry_Id' => 1
     ];
 } else {
-    $product_data = $product_res->fetch_assoc();
+    $brandId = $product_data['Brand_Id'] ?? '';
+    $brands = $database->getReference('brand')->orderByChild('Brand_Id')->equalTo($brandId)->getSnapshot()->getValue();
+    $product_data['Brand_Name'] = $brands ? reset($brands)['Brand_Name'] : '';
+
+    $catId = $product_data['Ctgry_Id'] ?? '';
+    $categories = $database->getReference('category')->orderByChild('Ctgry_Id')->equalTo($catId)->getSnapshot()->getValue();
+    $product_data['Ctgry_Name'] = $categories ? reset($categories)['Ctgry_Name'] : '';
 }
 
 // Fetch Variants
-$variant_query = "SELECT * FROM PRODUCT_VARIANT WHERE Prod_Id = ?";
-$v_stmt = $conn->prepare($variant_query);
-$v_stmt->bind_param("i", $prod_id);
-$v_stmt->execute();
-$variants_res = $v_stmt->get_result();
+$variants_res = $database->getReference('product_variant')->orderByChild('Prod_Id')->equalTo($prod_id)->getSnapshot()->getValue() ?: [];
 $variants = [];
 $sizes = [];
 $colors = [];
 
-while ($v = $variants_res->fetch_assoc()) {
+foreach ($variants_res as $v) {
     $variants[] = $v;
-    if ($v['PVar_Size'] && !in_array($v['PVar_Size'], $sizes)) $sizes[] = $v['PVar_Size'];
-    if ($v['PVar_Color'] && !in_array($v['PVar_Color'], $colors)) $colors[] = $v['PVar_Color'];
+    if (!empty($v['PVar_Size']) && !in_array($v['PVar_Size'], $sizes)) $sizes[] = $v['PVar_Size'];
+    if (!empty($v['PVar_Color']) && !in_array($v['PVar_Color'], $colors)) $colors[] = $v['PVar_Color'];
 }
 
 // Ensure dummy data if empty (to match mockup)
@@ -57,19 +51,22 @@ if (empty($sizes)) $sizes = ['34', '36', '38', '40', '42', '44'];
 if (empty($colors)) $colors = ['white'];
 
 // Fetch Images
-$img_query = "SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = ? ORDER BY PImg_IsPrimary DESC";
-$i_stmt = $conn->prepare($img_query);
-$i_stmt->bind_param("i", $prod_id);
-$i_stmt->execute();
-$img_res = $i_stmt->get_result();
+$images_res = $database->getReference('product_image')->orderByChild('Prod_Id')->equalTo($prod_id)->getSnapshot()->getValue() ?: [];
+// Sort by IsPrimary DESC
+$images_res_array = array_values($images_res);
+usort($images_res_array, function($a, $b) {
+    return ($b['PImg_IsPrimary'] ?? 0) <=> ($a['PImg_IsPrimary'] ?? 0);
+});
+
 $images = [];
-while ($img = $img_res->fetch_assoc()) {
-    $img_url = $img['PImg_ImgUrl'];
+foreach ($images_res_array as $img) {
+    $img_url = $img['PImg_ImgUrl'] ?? '';
     if (!empty($img_url) && strpos($img_url, 'http') === false) {
         $img_url = '../' . $img_url;
     }
     $images[] = $img_url;
 }
+
 if (empty($images)) {
     // Use the exact images from the screenshot to match the mockup perfectly
     $images = [

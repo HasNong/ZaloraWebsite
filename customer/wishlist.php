@@ -13,36 +13,70 @@ $cust_id = $_SESSION['user_id'];
 $wish_items = [];
 
 // Fetch Wishlist Items from DB
-$query = "SELECT wi.WItm_Id, pv.PVar_Id, pv.PVar_Size, pv.PVar_Color, p.Prod_Id, p.Prod_Name, p.Prod_BasePrice, b.Brand_Name,
-          (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id AND PImg_IsPrimary = 1 LIMIT 1) as Prod_Image
-          FROM WISHLIST w
-          JOIN WISHLIST_ITEM wi ON w.Wish_Id = wi.Wish_Id
-          JOIN PRODUCT_VARIANT pv ON wi.PVar_Id = pv.PVar_Id
-          JOIN PRODUCT p ON pv.Prod_Id = p.Prod_Id
-          JOIN BRAND b ON p.Brand_Id = b.Brand_Id
-          WHERE w.Cust_Id = ?";
+$wishRef = $database->getReference('WISHLIST')->orderByChild('Cust_Id')->equalTo($cust_id)->getSnapshot()->getValue();
 
-$stmt = $conn->prepare($query);
-$stmt->bind_param("i", $cust_id);
-$stmt->execute();
-$result = $stmt->get_result();
-
-while ($row = $result->fetch_assoc()) {
-    $img = $row['Prod_Image'] ?? "https://via.placeholder.com/400x500?text=No+Image";
-    if (!empty($row['Prod_Image']) && strpos($row['Prod_Image'], 'http') === false) {
-        $img = '../' . $row['Prod_Image'];
+if ($wishRef) {
+    $wish_id = key($wishRef);
+    
+    // Fetch Items
+    $wishItemsData = $database->getReference('WISHLIST_ITEM')->orderByChild('Wish_Id')->equalTo($wish_id)->getSnapshot()->getValue();
+    
+    if ($wishItemsData) {
+        $allVariants = $database->getReference('product_variant')->getSnapshot()->getValue() ?: [];
+        $allProducts = $database->getReference('product')->getSnapshot()->getValue() ?: [];
+        $allBrands = $database->getReference('brand')->getSnapshot()->getValue() ?: [];
+        $allImages = $database->getReference('product_image')->getSnapshot()->getValue() ?: [];
+        
+        foreach ($wishItemsData as $wkey => $wi) {
+            $pvar_id = $wi['PVar_Id'] ?? '';
+            $variant = null;
+            foreach ($allVariants as $v) {
+                if (($v['PVar_Id'] ?? '') == $pvar_id) { $variant = $v; break; }
+            }
+            
+            if ($variant) {
+                $prod_id = $variant['Prod_Id'] ?? '';
+                $product = null;
+                foreach ($allProducts as $p) {
+                    if (($p['Prod_Id'] ?? '') == $prod_id) { $product = $p; break; }
+                }
+                
+                if ($product) {
+                    $brand_id = $product['Brand_Id'] ?? '';
+                    $brand_name = '';
+                    foreach ($allBrands as $b) {
+                        if (($b['Brand_Id'] ?? '') == $brand_id) { $brand_name = $b['Brand_Name'] ?? ''; break; }
+                    }
+                    
+                    $img = '';
+                    foreach ($allImages as $pi) {
+                        if (($pi['Prod_Id'] ?? '') == $prod_id && ($pi['PImg_IsPrimary'] ?? 0) == 1) {
+                            $img = $pi['PImg_ImgUrl'] ?? '';
+                            break;
+                        }
+                    }
+                    
+                    if (empty($img)) {
+                        $img = "https://via.placeholder.com/400x500?text=No+Image";
+                    } elseif (strpos($img, 'http') === false) {
+                        $img = '../' . $img;
+                    }
+                    
+                    $wish_items[] = [
+                        "witm_id" => $wi['WItm_Id'] ?? $wkey,
+                        "pvar_id" => $pvar_id,
+                        "prod_id" => $prod_id,
+                        "name"    => $product['Prod_Name'] ?? '',
+                        "brand"   => $brand_name,
+                        "size"    => $variant['PVar_Size'] ?? '',
+                        "color"   => $variant['PVar_Color'] ?? '',
+                        "price"   => $product['Prod_BasePrice'] ?? 0,
+                        "img"     => $img,
+                    ];
+                }
+            }
+        }
     }
-    $wish_items[] = [
-        "witm_id" => $row['WItm_Id'],
-        "pvar_id" => $row['PVar_Id'],
-        "prod_id" => $row['Prod_Id'],
-        "name"    => $row['Prod_Name'],
-        "brand"   => $row['Brand_Name'],
-        "size"    => $row['PVar_Size'],
-        "color"   => $row['PVar_Color'],
-        "price"   => $row['Prod_BasePrice'],
-        "img"     => $img,
-    ];
 }
 
 $count = count($wish_items);
@@ -213,7 +247,7 @@ $count = count($wish_items);
                 ?>
                     <div class="wish-card" id="wish-<?= $item['witm_id'] ?>">
                         <div class="img-container">
-                            <button class="btn-remove" onclick="removeWish(<?= $item['witm_id'] ?>, <?= $item['pvar_id'] ?>)" title="Remove">
+                            <button class="btn-remove" onclick="removeWish('<?= $item['witm_id'] ?>', '<?= $item['pvar_id'] ?>')" title="Remove">
                                 <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                             </button>
                             <a href="product.php?id=<?= $item['prod_id'] ?>">

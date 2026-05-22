@@ -31,7 +31,7 @@ if ($ret_check->num_rows > 0) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_return'])) {
-    $reason = mysqli_real_escape_string($conn, $_POST['reason']);
+    $reason = $conn->real_escape_string($_POST['reason']);
     $evidence_url = NULL;
 
     // Handle File Upload

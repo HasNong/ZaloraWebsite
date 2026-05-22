@@ -7,62 +7,123 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-$order_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+$order_id = isset($_GET['id']) ? $_GET['id'] : '';
 $cust_id = $_SESSION['user_id'];
 
 // 1. Fetch Order Header + Address + Driver Info + Proof
-$order_query = "SELECT o.*, a.Addrs_RcpntName, a.Addrs_Street, a.Addrs_City, a.Addrs_ZipCode,
-                       d.Driv_FirstName, d.Driv_LastName, d.Driv_VehicleType, d.Driv_Phone,
-                       s.Ship_ProofImg, s.Ship_DeliveredAt
-                FROM ORDERS o
-                JOIN ADDRESS a ON o.Addrs_Id = a.Addrs_id
-                LEFT JOIN shipment s ON o.Order_Id = s.Order_Id
-                LEFT JOIN driver d ON s.Driv_Id = d.Driv_Id
-                WHERE o.Order_Id = ? AND o.Cust_Id = ?";
-$stmt = $conn->prepare($order_query);
-$stmt->bind_param("ii", $order_id, $cust_id);
-$stmt->execute();
-$order = $stmt->get_result()->fetch_assoc();
+$orderSnapshot = $database->getReference('ORDERS')->orderByChild('Order_Id')->equalTo($order_id)->getSnapshot()->getValue();
+$order = $orderSnapshot ? reset($orderSnapshot) : null;
 
-if (!$order) {
+if (!$order || ($order['Cust_Id'] ?? '') != $cust_id) {
     die("Order not found or access denied.");
 }
 
+// Fetch Address
+$addr_id = $order['Addrs_Id'] ?? '';
+$addrSnapshot = $database->getReference('ADDRESS')->orderByChild('Addrs_id')->equalTo($addr_id)->getSnapshot()->getValue();
+$addr = $addrSnapshot ? reset($addrSnapshot) : [];
+if ($addr) {
+    $order = array_merge($order, $addr);
+}
+
+// Fetch Shipment & Driver Info
+$shipSnapshot = $database->getReference('shipment')->orderByChild('Order_Id')->equalTo($order_id)->getSnapshot()->getValue();
+$shipment = $shipSnapshot ? reset($shipSnapshot) : [];
+if ($shipment) {
+    $order = array_merge($order, $shipment);
+    
+    $driv_id = $shipment['Driv_Id'] ?? '';
+    if (!empty($driv_id)) {
+        $drivSnapshot = $database->getReference('driver')->orderByChild('Driv_Id')->equalTo($driv_id)->getSnapshot()->getValue();
+        $driver = $drivSnapshot ? reset($drivSnapshot) : [];
+        if ($driver) {
+            $order = array_merge($order, $driver);
+        }
+    }
+}
+
 // 2. Fetch Order Items
-$items_query = "SELECT oi.*, p.Prod_Name, p.Prod_Id AS ProductId, pv.PVar_Size, pv.PVar_Color,
-                (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id AND PImg_IsPrimary = 1 LIMIT 1) as img
-                FROM ORDER_ITEM oi
-                JOIN PRODUCT_VARIANT pv ON oi.PVar_Id = pv.PVar_Id
-                JOIN PRODUCT p ON pv.Prod_Id = p.Prod_Id
-                WHERE oi.Order_Id = ?";
-$stmt_i = $conn->prepare($items_query);
-$stmt_i->bind_param("i", $order_id);
-$stmt_i->execute();
-$items = $stmt_i->get_result();
+$items = [];
+$oiSnapshot = $database->getReference('ORDER_ITEM')->orderByChild('Order_Id')->equalTo($order_id)->getSnapshot()->getValue();
+if ($oiSnapshot) {
+    $allVariants = $database->getReference('product_variant')->getSnapshot()->getValue() ?: [];
+    $allProducts = $database->getReference('product')->getSnapshot()->getValue() ?: [];
+    $allImages = $database->getReference('product_image')->getSnapshot()->getValue() ?: [];
+
+    foreach ($oiSnapshot as $oi_key => $oi) {
+        $pvar_id = $oi['PVar_Id'] ?? '';
+        $variant = null;
+        foreach ($allVariants as $v) {
+            if (($v['PVar_Id'] ?? '') == $pvar_id) { $variant = $v; break; }
+        }
+        
+        if ($variant) {
+            $prod_id = $variant['Prod_Id'] ?? '';
+            $product = null;
+            foreach ($allProducts as $p) {
+                if (($p['Prod_Id'] ?? '') == $prod_id) { $product = $p; break; }
+            }
+            
+            if ($product) {
+                $img = '';
+                foreach ($allImages as $pi) {
+                    if (($pi['Prod_Id'] ?? '') == $prod_id && ($pi['PImg_IsPrimary'] ?? 0) == 1) {
+                        $img = $pi['PImg_ImgUrl'] ?? '';
+                        break;
+                    }
+                }
+                
+                $items[] = [
+                    'OdItm_Id' => $oi['OdItm_Id'] ?? $oi_key,
+                    'Prod_Name' => $product['Prod_Name'] ?? '',
+                    'ProductId' => $product['Prod_Id'] ?? $prod_id,
+                    'PVar_Size' => $variant['PVar_Size'] ?? '',
+                    'PVar_Color' => $variant['PVar_Color'] ?? '',
+                    'OdItm_Quantity' => $oi['OdItm_Quantity'] ?? 0,
+                    'OdItm_Subtotal' => $oi['OdItm_Subtotal'] ?? 0,
+                    'img' => $img
+                ];
+            }
+        }
+    }
+}
 
 // 3. Handle Review Submission
 if (isset($_POST['submit_review'])) {
-    $oditm_id = intval($_POST['oditm_id']);
-    $prod_id = intval($_POST['prod_id']);
+    $oditm_id = $_POST['oditm_id'];
+    $prod_id = $_POST['prod_id'];
     $rating = intval($_POST['rating']);
-    $comment = mysqli_real_escape_string($conn, $_POST['comment']);
-    $pic_url = mysqli_real_escape_string($conn, $_POST['pic_url']);
+    $comment = trim($_POST['comment']);
+    $pic_url = trim($_POST['pic_url']);
     
-    // Get next ID
-    $res_rid = $conn->query("SELECT MAX(Rview_Id) as max_id FROM review");
-    $next_rid = ($res_rid->fetch_assoc()['max_id'] ?? 0) + 1;
-
-    // Insert review with IsApproved = 0 (Requires Admin Review)
-    $ins_rev = $conn->prepare("INSERT INTO review (Rview_Id, Prod_Id, Cust_Id, OdItm_Id, Rview_Rating, Rview_Txt, Rview_PicUrl, Rview_IsApproved, Rview_CreatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NOW())");
-    $ins_rev->bind_param("iiiiiss", $next_rid, $prod_id, $cust_id, $oditm_id, $rating, $comment, $pic_url);
-    $ins_rev->execute();
+    $newReviewRef = $database->getReference('review')->push();
+    $newReviewRef->set([
+        'Rview_Id' => $newReviewRef->getKey(),
+        'Prod_Id' => $prod_id,
+        'Cust_Id' => $cust_id,
+        'OdItm_Id' => $oditm_id,
+        'Rview_Rating' => $rating,
+        'Rview_Txt' => $comment,
+        'Rview_PicUrl' => $pic_url,
+        'Rview_IsApproved' => 0,
+        'Rview_CreatedAt' => date('Y-m-d H:i:s')
+    ]);
     header("Location: order_details.php?id=$order_id&review=success");
     exit;
 }
 
 // 6. Check for existing Return Request
-$res_ret = $conn->query("SELECT Rtrn_Status FROM return_request rr JOIN ORDER_ITEM oi ON rr.OdItm_Id = oi.OdItm_Id WHERE oi.Order_Id = $order_id LIMIT 1");
-$return_data = $res_ret->fetch_assoc();
+$return_data = null;
+$returnRequests = $database->getReference('return_request')->getSnapshot()->getValue() ?: [];
+foreach ($returnRequests as $rr) {
+    $rr_oditm_id = $rr['OdItm_Id'] ?? '';
+    foreach ($items as $itm) {
+        if ($itm['OdItm_Id'] == $rr_oditm_id) {
+            $return_data = $rr;
+            break 2;
+        }
+    }
+}
 
 $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
 ?>
@@ -361,13 +422,13 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
 
     <div class="card">
         <h2 class="card-title">Order Items</h2>
-        <?php while($item = $items->fetch_assoc()): 
+        <?php foreach($items as $item): 
             $img = $item['img'] ?? 'https://via.placeholder.com/100';
             if ($img && strpos($img, 'http') === false) $img = '../' . $img;
             
             // Check if reviewed
-            $rev_check = $conn->query("SELECT Rview_Id FROM review WHERE OdItm_Id = " . $item['OdItm_Id']);
-            $is_reviewed = $rev_check->num_rows > 0;
+            $rev_check = $database->getReference('review')->orderByChild('OdItm_Id')->equalTo($item['OdItm_Id'])->getSnapshot()->getValue();
+            $is_reviewed = !empty($rev_check);
         ?>
         <div class="item-row">
             <img src="<?= htmlspecialchars($img) ?>" class="item-img" alt="<?= htmlspecialchars($item['Prod_Name']) ?>"/>
@@ -380,13 +441,13 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
                     <?php if ($is_reviewed): ?>
                         <span style="font-size: 10px; color: #27ae60; font-weight: 700; text-transform: uppercase;">✓ Reviewed</span>
                     <?php else: ?>
-                        <button class="btn-review" onclick="openReviewModal(<?= $item['OdItm_Id'] ?>, <?= $item['ProductId'] ?>, '<?= addslashes($item['Prod_Name']) ?>')">Write Review</button>
+                        <button class="btn-review" onclick="openReviewModal('<?= $item['OdItm_Id'] ?>', '<?= $item['ProductId'] ?>', '<?= addslashes($item['Prod_Name']) ?>')">Write Review</button>
                     <?php endif; ?>
                 <?php endif; ?>
             </div>
             <div class="item-price">$<?= number_format($item['OdItm_Subtotal'], 2) ?></div>
         </div>
-        <?php endwhile; ?>
+        <?php endforeach; ?>
 
         <div style="margin-top: 30px;">
             <div class="summary-row">

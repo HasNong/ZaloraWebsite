@@ -8,54 +8,83 @@ $category_name = isset($_GET['category']) ? $_GET['category'] : '';
 $max_price = isset($_GET['max_price']) ? floatval($_GET['max_price']) : 50000;
 $search_q = isset($_GET['q']) ? trim($_GET['q']) : '';
 
-$query = "SELECT DISTINCT p.Prod_Id, p.Prod_Name, p.Prod_BasePrice, b.Brand_Name, 
-          (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id AND PImg_IsPrimary = 1 LIMIT 1) as Primary_Image,
-          (SELECT PVar_Id FROM PRODUCT_VARIANT WHERE Prod_Id = p.Prod_Id LIMIT 1) as Default_Variant
-          FROM PRODUCT p
-          JOIN BRAND b ON p.Brand_Id = b.Brand_Id
-          LEFT JOIN CATEGORY c ON p.Ctgry_Id = c.Ctgry_Id
-          LEFT JOIN PRODUCT_VARIANT pv ON p.Prod_Id = pv.Prod_Id
-          WHERE p.Prod_IsActive = 1 AND p.Prod_BasePrice <= ?";
+// Fetch all necessary data from Firebase Realtime Database
+$allProducts = $database->getReference('product')->getSnapshot()->getValue() ?: [];
+$allBrands = $database->getReference('brand')->getSnapshot()->getValue() ?: [];
+$allCategories = $database->getReference('category')->getSnapshot()->getValue() ?: [];
+$allImages = $database->getReference('product_image')->getSnapshot()->getValue() ?: [];
+$allVariants = $database->getReference('product_variant')->getSnapshot()->getValue() ?: [];
 
-$params = [$max_price];
-$types = "d";
-
-if (!empty($category_name)) {
-    $query .= " AND c.Ctgry_Name = ?";
-    $params[] = $category_name;
-    $types .= "s";
-}
-if (!empty($search_q)) {
-    $query .= " AND (p.Prod_Name LIKE ? OR p.Prod_Desc LIKE ? OR b.Brand_Name LIKE ?)";
-    $like_q = "%$search_q%";
-    $params[] = $like_q;
-    $params[] = $like_q;
-    $params[] = $like_q;
-    $types .= "sss";
+// Build indices for faster lookup
+$brandIndex = [];
+foreach ($allBrands as $b) {
+    if (isset($b['Brand_Id'])) $brandIndex[$b['Brand_Id']] = $b['Brand_Name'] ?? '';
 }
 
-$stmt = $conn->prepare($query);
-$stmt->bind_param($types, ...$params);
-$stmt->execute();
-$result = $stmt->get_result();
+$categoryIndex = [];
+foreach ($allCategories as $c) {
+    if (isset($c['Ctgry_Id'])) $categoryIndex[$c['Ctgry_Id']] = $c['Ctgry_Name'] ?? '';
+}
+
 $products = [];
 
-if ($result) {
-    while ($row = $result->fetch_assoc()) {
-        $img = $row['Primary_Image'] ?? "https://via.placeholder.com/600x800?text=No+Image";
-        if (!empty($row['Primary_Image']) && strpos($row['Primary_Image'], 'http') === false) {
-            $img = '../' . $row['Primary_Image'];
-        }
+foreach ($allProducts as $p) {
+    if (!isset($p['Prod_IsActive']) || $p['Prod_IsActive'] != 1) continue;
+    if (isset($p['Prod_BasePrice']) && floatval($p['Prod_BasePrice']) > $max_price) continue;
 
-        $products[] = [
-            "id"    => $row['Prod_Id'],
-            "pvar_id" => $row['Default_Variant'],
-            "brand" => $row['Brand_Name'],
-            "name"  => $row['Prod_Name'],
-            "price" => $row['Prod_BasePrice'],
-            "img"   => $img,
-        ];
+    $prodId = $p['Prod_Id'] ?? '';
+    $brandId = $p['Brand_Id'] ?? '';
+    $ctgryId = $p['Ctgry_Id'] ?? '';
+
+    $brandName = $brandIndex[$brandId] ?? '';
+    $catName = $categoryIndex[$ctgryId] ?? '';
+
+    // Category filter
+    if (!empty($category_name) && $catName !== $category_name) {
+        continue;
     }
+
+    // Search filter
+    if (!empty($search_q)) {
+        $sq = strtolower($search_q);
+        if (strpos(strtolower($p['Prod_Name'] ?? ''), $sq) === false && 
+            strpos(strtolower($p['Prod_Desc'] ?? ''), $sq) === false &&
+            strpos(strtolower($brandName), $sq) === false) {
+            continue;
+        }
+    }
+
+    // Primary Image
+    $primaryImg = '';
+    foreach ($allImages as $img) {
+        if (($img['Prod_Id'] ?? '') == $prodId && ($img['PImg_IsPrimary'] ?? 0) == 1) {
+            $primaryImg = $img['PImg_ImgUrl'] ?? '';
+            break;
+        }
+    }
+
+    // Default Variant
+    $defVarId = '';
+    foreach ($allVariants as $var) {
+        if (($var['Prod_Id'] ?? '') == $prodId) {
+            $defVarId = $var['PVar_Id'] ?? '';
+            break;
+        }
+    }
+
+    $imgUrl = $primaryImg ?: "https://via.placeholder.com/600x800?text=No+Image";
+    if (!empty($primaryImg) && strpos($primaryImg, 'http') === false) {
+        $imgUrl = '../' . $primaryImg;
+    }
+
+    $products[] = [
+        "id" => $prodId,
+        "pvar_id" => $defVarId,
+        "brand" => $brandName,
+        "name" => $p['Prod_Name'] ?? '',
+        "price" => $p['Prod_BasePrice'] ?? 0,
+        "img" => $imgUrl,
+    ];
 }
 ?>
 <!DOCTYPE html>
@@ -633,7 +662,7 @@ if ($result) {
                     <div class="product-meta">
                         <div class="brand-name"><?= htmlspecialchars($p['brand']) ?></div>
                         <div class="product-name"><?= htmlspecialchars($p['name']) ?></div>
-                        <button class="btn-heart <?= $is_wishlisted ?? false ? 'liked' : '' ?>" onclick="event.preventDefault(); toggleWishGrid(this, <?= $p['pvar_id'] ?? 0 ?>)">
+                        <button class="btn-heart <?= $is_wishlisted ?? false ? 'liked' : '' ?>" onclick="event.preventDefault(); toggleWishGrid(this, '<?= $p['pvar_id'] ?? '' ?>')">
                             <svg width="16" height="16" fill="<?= $is_wishlisted ?? false ? 'currentColor' : 'none' ?>" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                         </button>
                         

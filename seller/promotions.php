@@ -14,7 +14,7 @@ $seller_name = $_SESSION['user_name'] ?? 'Seller';
 // Handle New Coupon Submission
 $msg = "";
 if (isset($_POST['add_coupon'])) {
-    $code = mysqli_real_escape_string($conn, $_POST['code']);
+    $code = $conn->real_escape_string($_POST['code']);
     $type = strtoupper(trim($_POST['type']));
     $val = floatval($_POST['value']);
     $min = floatval($_POST['min_spend']);

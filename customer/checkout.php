@@ -10,18 +10,40 @@ if (!isset($_SESSION['user_id'])) {
 $cust_id = $_SESSION['user_id'];
 
 // 1. Fetch Cart Totals
-$cart_query = "SELECT SUM(p.Prod_BasePrice * ci.CItm_Quantity) as subtotal
-               FROM CART c
-               JOIN CART_ITEM ci ON c.Cart_Id = ci.Cart_Id
-               JOIN PRODUCT_VARIANT pv ON ci.PVar_Id = pv.PVar_Id
-               JOIN PRODUCT p ON pv.Prod_Id = p.Prod_Id
-               WHERE c.Cust_Id = ?";
-$stmt = $conn->prepare($cart_query);
-$stmt->bind_param("i", $cust_id);
-$stmt->execute();
-$cart_res = $stmt->get_result()->fetch_assoc();
+$carts = $database->getReference('cart')->orderByChild('Cust_Id')->equalTo($cust_id)->getSnapshot()->getValue();
+$subtotal = 0;
+$cart_id = null;
 
-$subtotal = $cart_res['subtotal'] ?? 0;
+if ($carts) {
+    $cart_id = reset($carts)['Cart_Id'] ?? key($carts);
+    $items = $database->getReference('cart_item')->orderByChild('Cart_Id')->equalTo($cart_id)->getSnapshot()->getValue();
+    
+    if ($items) {
+        $allVariants = $database->getReference('product_variant')->getSnapshot()->getValue() ?: [];
+        $allProducts = $database->getReference('product')->getSnapshot()->getValue() ?: [];
+        
+        foreach ($items as $ci) {
+            $pvar_id = $ci['PVar_Id'] ?? '';
+            $qty = intval($ci['CItm_Quantity'] ?? 0);
+            
+            $variant = null;
+            foreach ($allVariants as $v) {
+                if (($v['PVar_Id'] ?? '') == $pvar_id) { $variant = $v; break; }
+            }
+            if ($variant) {
+                $prod_id = $variant['Prod_Id'] ?? '';
+                $product = null;
+                foreach ($allProducts as $p) {
+                    if (($p['Prod_Id'] ?? '') == $prod_id) { $product = $p; break; }
+                }
+                if ($product) {
+                    $subtotal += floatval($product['Prod_BasePrice'] ?? 0) * $qty;
+                }
+            }
+        }
+    }
+}
+
 if ($subtotal == 0) {
     header("Location: cart.php");
     exit();
@@ -32,70 +54,87 @@ $shipping_fee = ($subtotal > 100) ? 0 : 5.00;
 $total = $subtotal + $tax + $shipping_fee;
 
 // 2. Fetch Customer Balance & Address
-$cust_query = "SELECT c.Cust_Balance, c.Cust_Firstname, c.Cust_Lastname, a.* 
-               FROM CUSTOMER c 
-               LEFT JOIN ADDRESS a ON c.Cust_Id = a.Cust_Id AND a.Addrs_IsDefault = 1
-               WHERE c.Cust_Id = ?";
-$stmt_c = $conn->prepare($cust_query);
-$stmt_c->bind_param("i", $cust_id);
-$stmt_c->execute();
-$cust = $stmt_c->get_result()->fetch_assoc();
+$custSnapshot = $database->getReference('CUSTOMER')->orderByChild('Cust_Id')->equalTo($cust_id)->getSnapshot()->getValue();
+$cust = $custSnapshot ? reset($custSnapshot) : null;
+$custKey = $custSnapshot ? key($custSnapshot) : null;
+
+$addrSnapshot = $database->getReference('ADDRESS')->orderByChild('Cust_Id')->equalTo($cust_id)->getSnapshot()->getValue();
+$defaultAddr = null;
+if ($addrSnapshot) {
+    foreach ($addrSnapshot as $a) {
+        if (($a['Addrs_IsDefault'] ?? 0) == 1) {
+            $defaultAddr = $a;
+            break;
+        }
+    }
+}
+
+if ($cust && $defaultAddr) {
+    $cust = array_merge($cust, $defaultAddr);
+}
 
 // 3. Handle Order Placement
 $error = "";
 if (isset($_POST['place_order'])) {
-    if ($cust['Cust_Balance'] < $total) {
+    if (floatval($cust['Cust_Balance'] ?? 0) < $total) {
         $error = "Insufficient balance in your Zalora Wallet. Please top up!";
     } else {
-        // START TRANSACTION
-        $conn->begin_transaction();
         try {
             // A. Get or Create Address
-            $addr_query = "SELECT Addrs_id FROM ADDRESS WHERE Cust_Id = ? AND Addrs_IsDefault = 1 LIMIT 1";
-            $stmt_a = $conn->prepare($addr_query);
-            $stmt_a->bind_param("i", $cust_id);
-            $stmt_a->execute();
-            $addr_res = $stmt_a->get_result()->fetch_assoc();
-            
-            if ($addr_res) {
-                $addr_id = $addr_res['Addrs_id'];
+            if ($defaultAddr) {
+                $addr_id = $defaultAddr['Addrs_id'] ?? '';
             } else {
-                // Get next ID manually
-                $res_id = $conn->query("SELECT MAX(Addrs_id) as max_id FROM ADDRESS");
-                $next_id = ($res_id->fetch_assoc()['max_id'] ?? 0) + 1;
-
-                // Create default address
-                $stmt_new_addr = $conn->prepare("INSERT INTO ADDRESS (Addrs_id, Cust_Id, Addrs_RcpntName, Addrs_Street, Addrs_City, Addrs_Province, Addrs_ZipCode, Addrs_IsDefault, Addrs_CreatedAt) VALUES (?, ?, ?, 'Not Set', 'Not Set', 'Not Set', '0000', 1, NOW())");
-                $full_name = $cust['Cust_Firstname'] . ' ' . $cust['Cust_Lastname'];
-                $stmt_new_addr->bind_param("iis", $next_id, $cust_id, $full_name);
-                $stmt_new_addr->execute();
-                $addr_id = $next_id;
+                $newAddrRef = $database->getReference('ADDRESS')->push();
+                $addr_id = $newAddrRef->getKey();
+                $full_name = ($cust['Cust_Firstname'] ?? '') . ' ' . ($cust['Cust_Lastname'] ?? '');
+                $newAddrRef->set([
+                    'Addrs_id' => $addr_id,
+                    'Cust_Id' => $cust_id,
+                    'Addrs_RcpntName' => $full_name,
+                    'Addrs_Street' => 'Not Set',
+                    'Addrs_City' => 'Not Set',
+                    'Addrs_Province' => 'Not Set',
+                    'Addrs_ZipCode' => '0000',
+                    'Addrs_IsDefault' => 1,
+                    'Addrs_CreatedAt' => date('Y-m-d H:i:s')
+                ]);
             }
 
             // B. Calculate Fees & Discount
             $shipping_fee = ($subtotal > 100) ? 0 : 5.00;
             $discount = 0;
             $applied_coupon_id = null;
+            $applied_coupon_key = null;
             $applied_voucher_id = null;
+            $applied_voucher_key = null;
 
             if (isset($_POST['coupon_code']) && !empty($_POST['coupon_code'])) {
-                $code = mysqli_real_escape_string($conn, $_POST['coupon_code']);
-                // Check Coupon
-                $cp_res = $conn->query("SELECT * FROM coupon WHERE Coup_Code = '$code' AND Coup_IsActive = 1 AND Is_Approved = 1 AND NOW() BETWEEN Coup_ValidFrom AND Coup_ValidUntil LIMIT 1");
-                if ($cp_res->num_rows > 0) {
-                    $cp = $cp_res->fetch_assoc();
-                    if ($subtotal >= $cp['Coup_MinOrderAmt'] && $cp['Coup_UsedCount'] < $cp['Coup_MaxUses']) {
-                        $applied_coupon_id = $cp['Coup_Id'];
-                        $discount = ($cp['Coup_DiscType'] == 'PERCENTAGE') ? ($subtotal * ($cp['Coup_DiscValue'] / 100)) : $cp['Coup_DiscValue'];
+                $code = trim($_POST['coupon_code']);
+                $now = date('Y-m-d H:i:s');
+                
+                $coupons = $database->getReference('coupon')->orderByChild('Coup_Code')->equalTo($code)->getSnapshot()->getValue();
+                if ($coupons) {
+                    foreach ($coupons as $c_key => $cp) {
+                        if (($cp['Coup_IsActive'] ?? 0) == 1 && ($cp['Is_Approved'] ?? 0) == 1 && $now >= ($cp['Coup_ValidFrom'] ?? '') && $now <= ($cp['Coup_ValidUntil'] ?? '9999-12-31')) {
+                            if ($subtotal >= ($cp['Coup_MinOrderAmt'] ?? 0) && ($cp['Coup_UsedCount'] ?? 0) < ($cp['Coup_MaxUses'] ?? 999)) {
+                                $applied_coupon_key = $c_key;
+                                $applied_coupon_id = $cp['Coup_Id'] ?? $c_key;
+                                $discount = (($cp['Coup_DiscType'] ?? '') == 'PERCENTAGE') ? ($subtotal * (($cp['Coup_DiscValue'] ?? 0) / 100)) : floatval($cp['Coup_DiscValue'] ?? 0);
+                            }
+                        }
                     }
                 }
-                // Check Voucher if no coupon applied
+                
                 if (!$applied_coupon_id) {
-                    $vc_res = $conn->query("SELECT * FROM voucher WHERE Vouch_Code = '$code' AND Cust_Id = $cust_id AND Vouch_IsUsed = 0 AND NOW() < Vouch_Expiry LIMIT 1");
-                    if ($vc_res->num_rows > 0) {
-                        $vc = $vc_res->fetch_assoc();
-                        $applied_voucher_id = $vc['Vouch_Id'];
-                        $discount = ($vc['Vouch_DiscType'] == 'PERCENTAGE') ? ($subtotal * ($vc['Vouch_DiscValue'] / 100)) : $vc['Vouch_DiscValue'];
+                    $vouchers = $database->getReference('voucher')->orderByChild('Vouch_Code')->equalTo($code)->getSnapshot()->getValue();
+                    if ($vouchers) {
+                        foreach ($vouchers as $v_key => $vc) {
+                            if (($vc['Cust_Id'] ?? '') == $cust_id && ($vc['Vouch_IsUsed'] ?? 0) == 0 && $now < ($vc['Vouch_Expiry'] ?? '9999-12-31')) {
+                                $applied_voucher_key = $v_key;
+                                $applied_voucher_id = $vc['Vouch_Id'] ?? $v_key;
+                                $discount = (($vc['Vouch_DiscType'] ?? '') == 'PERCENTAGE') ? ($subtotal * (($vc['Vouch_DiscValue'] ?? 0) / 100)) : floatval($vc['Vouch_DiscValue'] ?? 0);
+                            }
+                        }
                     }
                 }
             }
@@ -103,62 +142,99 @@ if (isset($_POST['place_order'])) {
             $final_total = max(0, ($subtotal + $tax + $shipping_fee) - $discount);
 
             // C. Deduct Balance
-            $conn->query("UPDATE CUSTOMER SET Cust_Balance = Cust_Balance - $final_total WHERE Cust_Id = $cust_id");
+            if ($custKey) {
+                $newBalance = floatval($cust['Cust_Balance'] ?? 0) - $final_total;
+                $database->getReference('CUSTOMER')->getChild($custKey)->update(['Cust_Balance' => $newBalance]);
+            }
 
             // D. Create Order
-            $res_oid = $conn->query("SELECT MAX(Order_Id) as max_id FROM ORDERS");
-            $order_id = ($res_oid->fetch_assoc()['max_id'] ?? 0) + 1;
-
-            $ord_stmt = $conn->prepare("INSERT INTO ORDERS (Order_Id, Cust_Id, Addrs_Id, Order_Status, Order_TotalAmnt, Order_ShipFee, Order_PlacedAt, Order_UpdatedAt) VALUES (?, ?, ?, 'PENDING', ?, ?, NOW(), NOW())");
-            $ord_stmt->bind_param("iiidd", $order_id, $cust_id, $addr_id, $final_total, $shipping_fee);
-            $ord_stmt->execute();
+            $orderRef = $database->getReference('ORDERS')->push();
+            $order_id = $orderRef->getKey();
+            $orderRef->set([
+                'Order_Id' => $order_id,
+                'Cust_Id' => $cust_id,
+                'Addrs_Id' => $addr_id,
+                'Order_Status' => 'PENDING',
+                'Order_TotalAmnt' => $final_total,
+                'Order_ShipFee' => $shipping_fee,
+                'Order_PlacedAt' => date('Y-m-d H:i:s'),
+                'Order_UpdatedAt' => date('Y-m-d H:i:s')
+            ]);
 
             // D2. Create Payment Record
-            $res_pid = $conn->query("SELECT MAX(Pymnt_Id) as max_id FROM payment");
-            $pymnt_id = ($res_pid->fetch_assoc()['max_id'] ?? 0) + 1;
-            $pymnt_stmt = $conn->prepare("INSERT INTO payment (Pymnt_Id, Order_Id, Pymnt_Method, Pymnt_Status, Pymnt_Amount, Pymnt_CreatedAt) VALUES (?, ?, 'BANK_TRANSFER', 'PAID', ?, NOW())");
-            $pymnt_stmt->bind_param("iid", $pymnt_id, $order_id, $final_total);
-            $pymnt_stmt->execute();
+            $paymentRef = $database->getReference('payment')->push();
+            $paymentRef->set([
+                'Pymnt_Id' => $paymentRef->getKey(),
+                'Order_Id' => $order_id,
+                'Pymnt_Method' => 'BANK_TRANSFER',
+                'Pymnt_Status' => 'PAID',
+                'Pymnt_Amount' => $final_total,
+                'Pymnt_CreatedAt' => date('Y-m-d H:i:s')
+            ]);
 
             // E. Record Coupon Usage
-            if ($applied_coupon_id) {
-                $res_ocid = $conn->query("SELECT MAX(OCoup_Id) as max_id FROM ORDER_COUPON");
-                $next_oc_id = ($res_ocid->fetch_assoc()['max_id'] ?? 0) + 1;
-                $conn->query("INSERT INTO ORDER_COUPON (OCoup_Id, Order_Id, Coup_Id, OCoup_DiscApplied, OCoup_AppliedAt) VALUES ($next_oc_id, $order_id, $applied_coupon_id, $discount, NOW())");
-                $conn->query("UPDATE coupon SET Coup_UsedCount = Coup_UsedCount + 1 WHERE Coup_Id = $applied_coupon_id");
+            if ($applied_coupon_key) {
+                $oCoupRef = $database->getReference('ORDER_COUPON')->push();
+                $oCoupRef->set([
+                    'OCoup_Id' => $oCoupRef->getKey(),
+                    'Order_Id' => $order_id,
+                    'Coup_Id' => $applied_coupon_id,
+                    'OCoup_DiscApplied' => $discount,
+                    'OCoup_AppliedAt' => date('Y-m-d H:i:s')
+                ]);
+                $currUses = $database->getReference('coupon')->getChild($applied_coupon_key)->getValue()['Coup_UsedCount'] ?? 0;
+                $database->getReference('coupon')->getChild($applied_coupon_key)->update(['Coup_UsedCount' => $currUses + 1]);
             }
-            if ($applied_voucher_id) {
-                $conn->query("UPDATE voucher SET Vouch_IsUsed = 1, Vouch_UsedAt = NOW() WHERE Vouch_Id = $applied_voucher_id");
+            if ($applied_voucher_key) {
+                $database->getReference('voucher')->getChild($applied_voucher_key)->update([
+                    'Vouch_IsUsed' => 1,
+                    'Vouch_UsedAt' => date('Y-m-d H:i:s')
+                ]);
             }
 
             // F. Move Cart Items to Order Items
-            $cart_items_query = "SELECT ci.PVar_Id, ci.CItm_Quantity, p.Prod_BasePrice 
-                                 FROM CART_ITEM ci 
-                                 JOIN CART c ON ci.Cart_Id = c.Cart_Id 
-                                 JOIN PRODUCT_VARIANT pv ON ci.PVar_Id = pv.PVar_Id
-                                 JOIN PRODUCT p ON pv.Prod_Id = p.Prod_Id
-                                 WHERE c.Cust_Id = $cust_id";
-            $cart_items = $conn->query($cart_items_query);
-            
-            $res_itemid = $conn->query("SELECT MAX(OdItm_Id) as max_id FROM ORDER_ITEM");
-            $next_item_id = ($res_itemid->fetch_assoc()['max_id'] ?? 0) + 1;
-
-            while($item = $cart_items->fetch_assoc()) {
-                $sub = $item['CItm_Quantity'] * $item['Prod_BasePrice'];
-                $ins_item = $conn->prepare("INSERT INTO ORDER_ITEM (OdItm_Id, Order_Id, PVar_Id, OdItm_Quantity, OdItm_UnitPrice, OdItm_Subtotal) VALUES (?, ?, ?, ?, ?, ?)");
-                $ins_item->bind_param("iiiidd", $next_item_id, $order_id, $item['PVar_Id'], $item['CItm_Quantity'], $item['Prod_BasePrice'], $sub);
-                $ins_item->execute();
-                $next_item_id++;
+            $items = $database->getReference('cart_item')->orderByChild('Cart_Id')->equalTo($cart_id)->getSnapshot()->getValue();
+            if ($items) {
+                $allVariants = $database->getReference('product_variant')->getSnapshot()->getValue() ?: [];
+                $allProducts = $database->getReference('product')->getSnapshot()->getValue() ?: [];
+                
+                foreach ($items as $ci_key => $item) {
+                    $pvar_id = $item['PVar_Id'] ?? '';
+                    $qty = intval($item['CItm_Quantity'] ?? 0);
+                    $basePrice = 0;
+                    
+                    // lookup base price
+                    foreach ($allVariants as $v) {
+                        if (($v['PVar_Id'] ?? '') == $pvar_id) {
+                            $prod_id = $v['Prod_Id'] ?? '';
+                            foreach ($allProducts as $p) {
+                                if (($p['Prod_Id'] ?? '') == $prod_id) {
+                                    $basePrice = floatval($p['Prod_BasePrice'] ?? 0);
+                                    break 2;
+                                }
+                            }
+                        }
+                    }
+                    
+                    $sub = $qty * $basePrice;
+                    $odItmRef = $database->getReference('ORDER_ITEM')->push();
+                    $odItmRef->set([
+                        'OdItm_Id' => $odItmRef->getKey(),
+                        'Order_Id' => $order_id,
+                        'PVar_Id' => $pvar_id,
+                        'OdItm_Quantity' => $qty,
+                        'OdItm_UnitPrice' => $basePrice,
+                        'OdItm_Subtotal' => $sub
+                    ]);
+                    
+                    // G. Clear Cart Item
+                    $database->getReference('cart_item')->getChild($ci_key)->remove();
+                }
             }
 
-            // G. Clear Cart
-            $conn->query("DELETE ci FROM CART_ITEM ci JOIN CART c ON ci.Cart_Id = c.Cart_Id WHERE c.Cust_Id = $cust_id");
-
-            $conn->commit();
             header("Location: profile.php?tab=orders&order=success");
             exit();
         } catch (Exception $e) {
-            $conn->rollback();
             $error = "Something went wrong: " . $e->getMessage();
         }
     }

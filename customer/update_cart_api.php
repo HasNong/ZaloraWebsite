@@ -10,36 +10,32 @@ if (!isset($_SESSION['user_id'])) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
-    $citm_id = isset($_POST['citm_id']) ? intval($_POST['citm_id']) : 0;
+    $citm_id = isset($_POST['citm_id']) ? $_POST['citm_id'] : '';
 
-    if ($citm_id <= 0) {
+    if (empty($citm_id)) {
         echo json_encode(["status" => "error", "message" => "Invalid item ID"]);
         exit();
     }
+
+    $cartItemRef = $database->getReference('cart_item')->getChild($citm_id);
 
     if ($action === 'update_qty') {
         $quantity = isset($_POST['quantity']) ? intval($_POST['quantity']) : 1;
         if ($quantity < 1) $quantity = 1;
 
-        $update_query = "UPDATE CART_ITEM SET CItm_Quantity = ? WHERE CItm_Id = ?";
-        $stmt = $conn->prepare($update_query);
-        $stmt->bind_param("ii", $quantity, $citm_id);
-        
-        if ($stmt->execute()) {
+        try {
+            $cartItemRef->update(['CItm_Quantity' => $quantity]);
             echo json_encode(["status" => "success"]);
-        } else {
-            echo json_encode(["status" => "error", "message" => $conn->error]);
+        } catch (\Exception $e) {
+            echo json_encode(["status" => "error", "message" => $e->getMessage()]);
         }
     } 
     elseif ($action === 'remove') {
-        $delete_query = "DELETE FROM CART_ITEM WHERE CItm_Id = ?";
-        $stmt = $conn->prepare($delete_query);
-        $stmt->bind_param("i", $citm_id);
-        
-        if ($stmt->execute()) {
+        try {
+            $cartItemRef->remove();
             echo json_encode(["status" => "success"]);
-        } else {
-            echo json_encode(["status" => "error", "message" => $conn->error]);
+        } catch (\Exception $e) {
+            echo json_encode(["status" => "error", "message" => $e->getMessage()]);
         }
     }
 }
