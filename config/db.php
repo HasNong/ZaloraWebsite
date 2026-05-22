@@ -5,7 +5,7 @@ use Kreait\Firebase\Factory;
 
 // Initialize Firebase
 $factory = (new Factory)
-    ->withServiceAccount(__DIR__ . '/../zaloramalalay-6eb75-firebase-adminsdk-fbsvc-4c7fa7c3f5.json')
+    ->withServiceAccount(__DIR__ . '/../private/zaloramalalay-6eb75-firebase-adminsdk-fbsvc-4c7fa7c3f5.json')
     ->withDatabaseUri('https://zaloramalalay-6eb75-default-rtdb.asia-southeast1.firebasedatabase.app/');
 
 $database = $factory->createDatabase();
