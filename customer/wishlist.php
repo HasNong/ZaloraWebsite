@@ -13,13 +13,13 @@ $cust_id = $_SESSION['user_id'];
 $wish_items = [];
 
 // Fetch Wishlist Items from DB
-$wishRef = $database->getReference('WISHLIST')->orderByChild('Cust_Id')->equalTo($cust_id)->getSnapshot()->getValue();
+$wishRef = $database->getReference('wishlist')->orderByChild('Cust_Id')->equalTo($cust_id)->getSnapshot()->getValue();
 
 if ($wishRef) {
     $wish_id = key($wishRef);
     
     // Fetch Items
-    $wishItemsData = $database->getReference('WISHLIST_ITEM')->orderByChild('Wish_Id')->equalTo($wish_id)->getSnapshot()->getValue();
+    $wishItemsData = $database->getReference('wishlist_item')->orderByChild('Wish_Id')->equalTo($wish_id)->getSnapshot()->getValue();
     
     if ($wishItemsData) {
         $allVariants = $database->getReference('product_variant')->getSnapshot()->getValue() ?: [];
@@ -89,70 +89,7 @@ $count = count($wish_items);
     <title>ZALORA — My Wishlist</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
     <link rel="stylesheet" href="../assets/css/global.css?v=<?= time() ?>"/>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Montserrat', sans-serif; background: #fff; color: #000; }
-
-        /* HEADER STYLES */
-        .top-promo-bar { background: #fff; border-bottom: 1px solid #eee; padding: 10px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
-        .promo-container-top { max-width: 1400px; margin: 0 auto; display: flex; justify-content: space-around; }
-        .promo-item-top { color: #000; text-decoration: none; display: flex; align-items: center; gap: 8px; }
-        header { background: #fff; position: sticky; top: 0; z-index: 1000; border-bottom: 1px solid #eee; }
-        .main-header { max-width: 1400px; margin: 0 auto; padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; }
-        .logo { font-size: 24px; font-weight: 400; letter-spacing: 0.3em; text-decoration: none; color: #000; }
-        .search-bar-wrap { flex: 1; max-width: 500px; margin: 0 40px; position: relative; }
-        .search-input { width: 100%; padding: 12px 25px; border: 1px solid #ddd; border-radius: 100px; font-size: 13px; background: #f5f5f5; outline: none; }
-        .search-icon-btn { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); background: #000; color: #fff; border: none; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; }
-        .header-actions { display: flex; gap: 20px; }
-        .header-action-item { color: #000; text-decoration: none; font-size: 13px; display: flex; align-items: center; gap: 5px; position: relative; }
-        .badge-count { position: absolute; top: -8px; right: -12px; background: #000; color: #fff; font-size: 9px; padding: 2px 6px; border-radius: 10px; }
-        
-        .nav-bar { border-bottom: 1px solid #eee; }
-        .nav-container { max-width: 1400px; margin: 0 auto; display: flex; justify-content: center; gap: 40px; padding: 15px 0; }
-        .nav-item { font-size: 11px; font-weight: 700; text-transform: uppercase; text-decoration: none; color: #000; letter-spacing: 0.1em; padding: 4px 8px; border-radius: 4px; border: 2px solid transparent; }
-        .nav-item.active { border-color: #000; }
-
-        /* DASHBOARD LAYOUT */
-        .dashboard-container { max-width: 1300px; margin: 40px auto; padding: 0 20px; display: flex; gap: 40px; }
-        
-        /* SIDEBAR */
-        .sidebar { width: 250px; flex-shrink: 0; background: #f8f8f8; padding: 20px 0; border-radius: 8px; height: fit-content; }
-        .sidebar h3 { font-size: 12px; margin: 10px 20px 20px; text-transform: uppercase; font-weight: 800; letter-spacing: 0.05em; }
-        .sidebar-link { display: block; padding: 15px 20px; font-size: 12px; color: #444; text-decoration: none; }
-        .sidebar-link:hover { background: #eee; }
-        .sidebar-link.active { background: #444; color: #fff; font-weight: 600; }
-
-        /* MAIN CONTENT */
-        .content-area { flex: 1; }
-        .page-title { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 400; margin-bottom: 25px; color: #333; }
-        
-        .wishlist-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
-        
-        /* PRODUCT CARD */
-        .wish-card { position: relative; display: flex; flex-direction: column; background: #fff; border-radius: 8px; padding-bottom: 15px; }
-        .img-container { background: #f0f0f0; border-radius: 8px; aspect-ratio: 3/4; overflow: hidden; position: relative; margin-bottom: 12px; display: flex; align-items: center; justify-content: center; }
-        .img-container img { width: 100%; height: 100%; object-fit: cover; }
-        
-        .btn-remove { position: absolute; top: 10px; right: 10px; background: transparent; border: none; font-size: 18px; cursor: pointer; color: #666; transition: 0.2s; z-index: 2; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; }
-        .btn-remove:hover { color: #000; }
-
-        .prod-brand { font-size: 11px; font-weight: 800; text-transform: uppercase; margin-bottom: 4px; color: #111; }
-        .prod-name { font-size: 11px; color: #666; margin-bottom: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        
-        .price-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
-        .current-price { font-size: 14px; font-weight: 700; color: #c0392b; }
-        .old-price { font-size: 10px; color: #999; text-decoration: line-through; }
-        .discount-tag { font-size: 10px; color: #c0392b; font-weight: 700; }
-        
-        .size-select { width: 100%; padding: 8px 10px; font-size: 11px; border: 1px solid #eee; border-radius: 4px; outline: none; margin-bottom: 10px; background: #fff; color: #444; appearance: none; }
-        
-        .btn-add-bag { width: 100%; padding: 12px; background: #333; color: #fff; border: none; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; transition: background 0.3s; }
-        .btn-add-bag:hover { background: #000; }
-        
-        .empty-state { text-align: center; padding: 100px 0; }
-        .empty-state p { margin-bottom: 20px; font-size: 14px; color: #666; }
-        .btn-shop { display: inline-block; padding: 12px 30px; background: #000; color: #fff; text-decoration: none; font-size: 12px; font-weight: 700; text-transform: uppercase; border-radius: 4px; }
-    </style>
+    <link rel="stylesheet" href="../assets/css/wishlist.css?v=<?= time() ?>"/>
 </head>
 <body>
 

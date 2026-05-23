@@ -10,17 +10,18 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'driver') {
 $driver_id = $_SESSION['user_id'];
 
 // Fetch Driver Financials
-$stmt = $conn->prepare("SELECT Driv_Balance FROM driver WHERE Driv_Id = ?");
-$stmt->bind_param("i", $driver_id);
-$stmt->execute();
-$driver = $stmt->get_result()->fetch_assoc();
+$drivers = $database->getReference('driver')->orderByChild('Driv_Id')->equalTo($driver_id)->getSnapshot()->getValue();
+$driver = $drivers ? current($drivers) : [];
 
 // Fetch Completed Earnings
-$query_earn = "SELECT SUM(15.00) as total_life FROM shipment WHERE Driv_Id = ? AND Ship_Status = 'DELIVERED'";
-$stmt_earn = $conn->prepare($query_earn);
-$stmt_earn->bind_param("i", $driver_id);
-$stmt_earn->execute();
-$earnings = $stmt_earn->get_result()->fetch_assoc();
+$shipments = $database->getReference('shipment')->orderByChild('Driv_Id')->equalTo($driver_id)->getSnapshot()->getValue() ?: [];
+$total_life = 0;
+foreach ($shipments as $ship) {
+    if (($ship['Ship_Status'] ?? '') === 'DELIVERED') {
+        $total_life += 15.00;
+    }
+}
+$earnings = ['total_life' => $total_life];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -29,65 +30,7 @@ $earnings = $stmt_earn->get_result()->fetch_assoc();
     <title>Zalora Driver — Payouts</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/seller.css">
-    <style>
-        .payout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 40px; }
-        .balance-card { 
-            background: var(--black); 
-            color: var(--white); 
-            padding: 40px; 
-            border-radius: var(--radius-md);
-            box-shadow: var(--shadow-sm);
-            transition: var(--transition);
-        }
-        .balance-card:hover {
-            box-shadow: var(--shadow-md);
-            transform: translateY(-2px);
-        }
-        .balance-label { font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 30px; display: block; }
-        .balance-value { font-size: 42px; font-weight: 800; margin: 0; }
-        .balance-btn { 
-            margin-top: 30px; 
-            background: var(--white); 
-            color: var(--black); 
-            border: none; 
-            padding: 15px 30px; 
-            font-weight: 700; 
-            font-size: 11px; 
-            cursor: pointer; 
-            text-transform: uppercase; 
-            border-radius: var(--radius-sm);
-            transition: var(--transition);
-        }
-        .balance-btn:hover {
-            opacity: 0.9;
-        }
-        
-        .stat-card { 
-            background: var(--white); 
-            border: 1px solid var(--border); 
-            padding: 40px; 
-            display: flex; 
-            flex-direction: column; 
-            justify-content: center; 
-            border-radius: var(--radius-md);
-            box-shadow: var(--shadow-sm);
-            transition: var(--transition);
-        }
-        .stat-card:hover {
-            box-shadow: var(--shadow-md);
-            transform: translateY(-2px);
-        }
-        .stat-label { font-size: 11px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px; }
-        .stat-value { font-size: 28px; font-weight: 800; }
-        
-        .payout-history { 
-            background: var(--white); 
-            border: 1px solid var(--border); 
-            padding: 40px; 
-            border-radius: var(--radius-md);
-            box-shadow: var(--shadow-sm);
-        }
-    </style>
+    <link rel="stylesheet" href="../assets/css/driver.css?v=<?= time() ?>">
 </head>
 <body>
 

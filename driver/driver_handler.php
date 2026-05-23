@@ -32,49 +32,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             exit;
         }
         
-        // Use a transaction for safety
-        $conn->begin_transaction();
         try {
-            // 1. Update Shipment
-            $stmt1 = $conn->prepare("UPDATE shipment SET Ship_Status = 'DELIVERED', Ship_DeliveredAt = NOW(), Ship_ProofImg = ? WHERE Order_Id = ? AND Driv_Id = ?");
-            $stmt1->bind_param("ssi", $proof_img_path, $order_id, $driver_id);
-            $stmt1->execute();
-            
-            // 2. Update Order
-            $stmt2 = $conn->prepare("UPDATE orders SET Order_Status = 'DELIVERED', Order_UpdatedAt = NOW() WHERE Order_Id = ?");
-            $stmt2->bind_param("s", $order_id);
-            $stmt2->execute();
-            
-            // 3. Add delivery fee to driver balance ($15.00)
-            $stmt3 = $conn->prepare("UPDATE driver SET Driv_Balance = Driv_Balance + 15.00 WHERE Driv_Id = ?");
-            $stmt3->bind_param("i", $driver_id);
-            $stmt3->execute();
-
-            // 4. Award Loyalty Points & Send Notification
-            require_once '../config/functions.php';
-            $ord_res = $conn->query("SELECT Cust_Id, Order_TotalAmnt FROM orders WHERE Order_Id = '$order_id'");
-            if ($ord_res && $ord_row = $ord_res->fetch_assoc()) {
-                $cust_id = $ord_row['Cust_Id'];
-                $points = floor($ord_row['Order_TotalAmnt']); // 1 point per $1
-                award_points($conn, $cust_id, $order_id, $points);
-                add_notification($conn, $cust_id, 'ORDER_UPDATE', 'Package Delivered!', "Your order #$order_id has been delivered. Enjoy your purchase! You earned $points points.");
+            // Locate Shipment
+            $shipmentRef = $database->getReference('shipment')->orderByChild('Order_Id')->equalTo($order_id)->getSnapshot()->getValue();
+            if ($shipmentRef) {
+                foreach ($shipmentRef as $s_key => $s_data) {
+                    if ($s_data['Driv_Id'] == $driver_id) {
+                        $database->getReference('shipment')->getChild($s_key)->update([
+                            'Ship_Status' => 'DELIVERED',
+                            'Ship_DeliveredAt' => date('Y-m-d H:i:s'),
+                            'Ship_ProofImg' => $proof_img_path
+                        ]);
+                        break;
+                    }
+                }
             }
             
-            $conn->commit();
+            // Locate Order
+            $orderRef = $database->getReference('orders')->orderByChild('Order_Id')->equalTo($order_id)->getSnapshot()->getValue();
+            $cust_id = 0;
+            $order_total = 0;
+            if ($orderRef) {
+                $o_key = key($orderRef);
+                $o_node = $database->getReference('orders')->getChild($o_key)->getSnapshot()->exists() ? 'orders' : 'orders';
+                $database->getReference($o_node)->getChild($o_key)->update([
+                    'Order_Status' => 'DELIVERED',
+                    'Order_UpdatedAt' => date('Y-m-d H:i:s')
+                ]);
+                $cust_id = $orderRef[$o_key]['Cust_Id'] ?? 0;
+                $order_total = $orderRef[$o_key]['Order_TotalAmnt'] ?? 0;
+            }
+            
+            // Add delivery fee to driver balance
+            $driverRef = $database->getReference('driver')->orderByChild('Driv_Id')->equalTo($driver_id)->getSnapshot()->getValue();
+            if ($driverRef) {
+                $d_key = key($driverRef);
+                $d_node = 'driver';
+                $current_balance = $driverRef[$d_key]['Driv_Balance'] ?? 0;
+                $database->getReference($d_node)->getChild($d_key)->update([
+                    'Driv_Balance' => $current_balance + 15.00
+                ]);
+            }
+
+            // Award Loyalty Points & Send Notification
+            if ($cust_id && $order_total) {
+                require_once '../config/functions.php';
+                $points = floor($order_total);
+                award_points($database, $cust_id, $order_id, $points);
+                add_notification($database, $cust_id, 'ORDER_UPDATE', 'Package Delivered!', "Your order #$order_id has been delivered. Enjoy your purchase! You earned $points points.");
+            }
+            
             $_SESSION['success'] = "Package delivered! $15.00 has been credited to your balance and the customer has been notified.";
         } catch (Exception $e) {
-            $conn->rollback();
             $_SESSION['error'] = "Error completing delivery: " . $e->getMessage();
         }
     } elseif ($_POST['action'] === 'pickup_return') {
         $rtrn_id = intval($_POST['rtrn_id']);
         
-        $stmt = $conn->prepare("UPDATE return_request SET Rtrn_Status = 'PICKED_UP' WHERE Rtrn_Id = ?");
-        $stmt->bind_param("i", $rtrn_id);
-        if ($stmt->execute()) {
+        $rtrnRef = $database->getReference('return_request')->orderByChild('Rtrn_Id')->equalTo($rtrn_id)->getSnapshot()->getValue();
+        if ($rtrnRef) {
+            $r_key = key($rtrnRef);
+            $database->getReference('return_request')->getChild($r_key)->update([
+                'Rtrn_Status' => 'PICKED_UP'
+            ]);
             $_SESSION['success'] = "Return item #$rtrn_id picked up successfully!";
         } else {
-            $_SESSION['error'] = "Error picking up return.";
+            $_SESSION['error'] = "Error picking up return. Request not found.";
         }
     }
     

@@ -2,7 +2,6 @@
 session_start();
 require_once '../config/db.php';
 
-// Auth check
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'seller') {
     header("Location: ../auth/login.php");
     exit;
@@ -13,7 +12,6 @@ $errors = [];
 $success_msg = $_SESSION['success_msg'] ?? '';
 unset($_SESSION['success_msg']);
 
-// Handle update profile POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
     $business_name = trim($_POST['business_name'] ?? '');
     $email = trim($_POST['email'] ?? '');
@@ -25,13 +23,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
         $errors[] = "Business Name and Email are required.";
     }
 
-    // Check if email already used by another seller
     if (empty($errors)) {
-        $check_stmt = $conn->prepare("SELECT * FROM seller WHERE Sell_Email = ? AND Sell_Id != ?");
-        $check_stmt->bind_param("si", $email, $seller_id);
-        $check_stmt->execute();
-        if ($check_stmt->get_result()->fetch_assoc()) {
-            $errors[] = "Business Email is already in use by another seller.";
+        $all_sellers = fb_merge_nodes($database, 'seller');
+        foreach ($all_sellers as $s) {
+            if (($s['Sell_Email'] ?? '') === $email && (string) ($s['Sell_Id'] ?? '') !== (string) $seller_id) {
+                $errors[] = "Business Email is already in use by another seller.";
+                break;
+            }
         }
     }
 
@@ -40,38 +38,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
             if ($new_pass !== $confirm_pass) {
                 $errors[] = "Passwords do not match.";
             } else {
-                $hash = password_hash($new_pass, PASSWORD_DEFAULT);
-                $upd = $conn->prepare("UPDATE seller SET Sell_BusinessName = ?, Sell_Email = ?, Sell_Phone = ?, Sell_PsswdHash = ? WHERE Sell_Id = ?");
-                $upd->bind_param("ssssi", $business_name, $email, $phone, $hash, $seller_id);
+                $updates = [
+                    'Sell_BusinessName' => $business_name,
+                    'Sell_Email' => $email,
+                    'Sell_Phone' => $phone,
+                    'Sell_PsswdHash' => password_hash($new_pass, PASSWORD_DEFAULT),
+                ];
             }
         } else {
-            $upd = $conn->prepare("UPDATE seller SET Sell_BusinessName = ?, Sell_Email = ?, Sell_Phone = ? WHERE Sell_Id = ?");
-            $upd->bind_param("sssi", $business_name, $email, $phone, $seller_id);
+            $updates = [
+                'Sell_BusinessName' => $business_name,
+                'Sell_Email' => $email,
+                'Sell_Phone' => $phone,
+            ];
         }
 
-        if (empty($errors)) {
-            if ($upd->execute()) {
+        if (empty($errors) && isset($updates)) {
+            if (fb_update_record($database, 'seller', 'Sell_Id', $seller_id, $updates)) {
+                $_SESSION['user_name'] = $business_name;
+                $_SESSION['user_email'] = $email;
                 $_SESSION['success_msg'] = "Credentials updated successfully!";
                 header("Location: profile.php");
                 exit;
-            } else {
-                $errors[] = "Database error: " . $conn->error;
             }
+            $errors[] = "Seller profile not found. Please contact support.";
         }
     }
 }
 
-// Fetch current seller data
-$stmt = $conn->prepare("SELECT * FROM seller WHERE Sell_Id = ?");
-$stmt->bind_param("i", $seller_id);
-$stmt->execute();
-$seller = $stmt->get_result()->fetch_assoc();
+$found = fb_find_record($database, 'seller', 'Sell_Id', $seller_id);
+$seller = $found['data'] ?? null;
 
 if (!$seller) {
     die("Seller profile not found. Please contact support.");
 }
 
-// Get initials for avatar
 $initials = "S";
 if (!empty($seller['Sell_BusinessName'])) {
     $words = explode(" ", $seller['Sell_BusinessName']);
@@ -89,194 +90,12 @@ if (!empty($seller['Sell_BusinessName'])) {
     <title>Seller Center - Profile</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/seller.css">
-    <style>
-        .profile-container {
-            max-width: 800px;
-        }
-        .profile-card {
-            background: var(--card-bg);
-            border: 1px solid var(--border-color);
-            padding: 3rem;
-            margin-bottom: 2rem;
-            display: flex;
-            gap: 3rem;
-            align-items: flex-start;
-            border-radius: var(--radius-md);
-            box-shadow: var(--shadow-sm);
-            transition: var(--transition);
-        }
-        .profile-card:hover {
-            box-shadow: var(--shadow-md);
-        }
-        .profile-avatar {
-            width: 120px;
-            height: 120px;
-            background: #f1f5f9;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 40px;
-            color: var(--text-muted);
-            flex-shrink: 0;
-            font-weight: 800;
-            letter-spacing: -0.02em;
-        }
-        .profile-details {
-            flex-grow: 1;
-        }
-        .profile-name {
-            font-size: 24px;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-        .profile-badge {
-            display: inline-block;
-            background: var(--accent-green-bg);
-            color: var(--accent-green-text);
-            padding: 4px 10px;
-            font-size: 10px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 2rem;
-            border-radius: 100px;
-        }
-        .info-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 2rem;
-        }
-        .info-group label {
-            display: block;
-            font-size: 10px;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 6px;
-        }
-        .info-group p {
-            font-size: 14px;
-            color: var(--text-main);
-        }
-        
-        /* SETTINGS CARD */
-        .settings-card {
-            background: var(--card-bg);
-            border: 1px solid var(--border-color);
-            padding: 3rem;
-            margin-bottom: 2rem;
-            border-radius: var(--radius-md);
-            box-shadow: var(--shadow-sm);
-            transition: var(--transition);
-        }
-        .settings-card:hover {
-            box-shadow: var(--shadow-md);
-        }
-        .settings-title {
-            font-size: 14px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 2rem;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 10px;
-        }
-        .form-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1.5rem;
-            margin-bottom: 1.5rem;
-        }
-        .form-group {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        .form-group label {
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-            color: var(--text-muted);
-            letter-spacing: 0.05em;
-        }
-        .form-control {
-            width: 100%;
-            padding: 12px 15px;
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-sm);
-            font-size: 13px;
-            outline: none;
-            font-family: inherit;
-            transition: var(--transition);
-        }
-        .form-control:focus {
-            border-color: #000;
-        }
-        
-        .btn-primary-custom {
-            background: #000;
-            color: #fff;
-            border: 1px solid #000;
-            padding: 12px 24px;
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            cursor: pointer;
-            transition: var(--transition);
-            width: fit-content;
-            border-radius: var(--radius-sm);
-        }
-        .btn-primary-custom:hover {
-            background: #fff;
-            color: #000;
-            transform: translateY(-1px);
-        }
-
-        .danger-zone {
-            border: 1px solid var(--accent-red);
-            padding: 2rem;
-            background: #fef2f2;
-        }
-        .danger-title {
-            color: var(--accent-red);
-            font-weight: 600;
-            font-size: 12px;
-            margin-bottom: 1rem;
-            text-transform: uppercase;
-        }
-        .btn-danger {
-            background: var(--accent-red);
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            cursor: pointer;
-            transition: opacity 0.2s;
-        }
-        .btn-danger:hover {
-            opacity: 0.9;
-        }
-
-        .alert {
-            padding: 15px 20px;
-            border-radius: 4px;
-            font-size: 13px;
-            margin-bottom: 2rem;
-            font-weight: 600;
-        }
-        .alert-success { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
-        .alert-error { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
-    </style>
+    <link rel="stylesheet" href="../assets/css/seller-profile.css?v=<?= time() ?>">
 </head>
 <body>
 
 <?php include 'sidebar.php'; ?>
 
-<!-- MAIN WRAPPER -->
 <div class="main-wrapper">
     <main class="main-content">
         
@@ -327,13 +146,12 @@ if (!empty($seller['Sell_BusinessName'])) {
                         </div>
                         <div class="info-group">
                             <label>JOINED DATE</label>
-                            <p><?= date('F d, Y', strtotime($seller['Sell_JoinedAt'])) ?></p>
+                            <p><?= date('F d, Y', strtotime($seller['Sell_JoinedAt'] ?? 'now')) ?></p>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- UPDATE PROFILE CREDENTIALS -->
             <div class="settings-card">
                 <h4 class="settings-title">Edit Store Credentials</h4>
                 <form method="POST">
@@ -385,7 +203,6 @@ if (!empty($seller['Sell_BusinessName'])) {
 
     </main>
 
-    <!-- FOOTER -->
     <footer class="seller-footer">
         <div>
             <div class="footer-logo">ZALORA</div>

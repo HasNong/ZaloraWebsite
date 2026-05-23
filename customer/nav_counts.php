@@ -3,34 +3,33 @@
 if (isset($_SESSION['user_id'])) {
     require_once __DIR__ . '/../config/db.php';
     $uid = $_SESSION['user_id'];
-
+    
     // 1. Cart Count
-    $c_q = "SELECT SUM(ci.CItm_Quantity) as total FROM CART c 
-            JOIN CART_ITEM ci ON c.Cart_Id = ci.Cart_Id 
-            WHERE c.Cust_Id = ?";
-    $c_stmt = $conn->prepare($c_q);
-    $c_stmt->bind_param("i", $uid);
-    $c_stmt->execute();
-    $c_res = $c_stmt->get_result()->fetch_assoc();
-    $nav_cart_count = $c_res['total'] ?? 0;
+    $carts = $database->getReference('cart')->orderByChild('Cust_Id')->equalTo($uid)->getSnapshot()->getValue();
+    $nav_cart_count = 0;
+    if ($carts) {
+        $cart_id = reset($carts)['Cart_Id'] ?? key($carts);
+        $items = $database->getReference('cart_item')->orderByChild('Cart_Id')->equalTo($cart_id)->getSnapshot()->getValue();
+        if ($items) {
+            foreach($items as $i) {
+                $nav_cart_count += $i['CItm_Quantity'] ?? 1;
+            }
+        }
+    }
 
     // 2. Wishlist Count
-    $w_q = "SELECT COUNT(wi.WItm_Id) as total FROM WISHLIST w 
-            JOIN WISHLIST_ITEM wi ON w.Wish_Id = wi.Wish_Id 
-            WHERE w.Cust_Id = ?";
-    $w_stmt = $conn->prepare($w_q);
-    $w_stmt->bind_param("i", $uid);
-    $w_stmt->execute();
-    $w_res = $w_stmt->get_result()->fetch_assoc();
-    $nav_wish_count = $w_res['total'] ?? 0;
+    $wishRef = $database->getReference('wishlist')->orderByChild('Cust_Id')->equalTo($uid)->getSnapshot()->getValue();
+    $nav_wish_count = 0;
+    if ($wishRef) {
+        $wish_id = reset($wishRef)['Wish_Id'] ?? key($wishRef);
+        $wishItemsData = $database->getReference('wishlist_item')->orderByChild('Wish_Id')->equalTo($wish_id)->getSnapshot()->getValue();
+        $nav_wish_count = $wishItemsData ? count($wishItemsData) : 0;
+    }
 
     // 3. User Name
-    $u_q = "SELECT Cust_Firstname FROM CUSTOMER WHERE Cust_Id = ?";
-    $u_stmt = $conn->prepare($u_q);
-    $u_stmt->bind_param("i", $uid);
-    $u_stmt->execute();
-    $u_res = $u_stmt->get_result()->fetch_assoc();
-    $nav_user_name = $u_res['Cust_Firstname'] ?? 'User';
+    $full_name = $_SESSION['user_name'] ?? 'User';
+    $name_parts = explode(' ', trim($full_name));
+    $nav_user_name = $name_parts[0] ?: 'User';
 } else {
     $nav_cart_count = 0;
     $nav_wish_count = 0;

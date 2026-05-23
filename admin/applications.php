@@ -11,54 +11,52 @@ $msg_type = "";
 
 // Handle Approve/Reject Actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    $app_id = intval($_POST['app_id'] ?? 0);
+    $app_id = $_POST['app_id'] ?? 0;
     $action = $_POST['action'];
 
-    if ($app_id > 0) {
+    if ($app_id) {
         // Fetch the application
-        $app_stmt = $conn->prepare("SELECT * FROM ROLE_APPLICATION WHERE App_Id = ?");
-        $app_stmt->bind_param("i", $app_id);
-        $app_stmt->execute();
-        $app = $app_stmt->get_result()->fetch_assoc();
-
-        if ($app) {
+        $appRef = $database->getReference('role_application')->orderByChild('App_Id')->equalTo(intval($app_id))->getSnapshot()->getValue();
+        if ($appRef) {
+            $app_key = key($appRef);
+            $app = current($appRef);
             $cust_id = $app['Cust_Id'];
             $app_type = $app['App_Type'];
             $details = json_decode($app['App_Details'], true);
 
             // Fetch Customer Info
-            $cust_stmt = $conn->prepare("SELECT * FROM CUSTOMER WHERE Cust_Id = ?");
-            $cust_stmt->bind_param("i", $cust_id);
-            $cust_stmt->execute();
-            $cust = $cust_stmt->get_result()->fetch_assoc();
-
-            if ($cust) {
+            $custRef = $database->getReference('customer')->orderByChild('Cust_Id')->equalTo(intval($cust_id))->getSnapshot()->getValue();
+            if ($custRef) {
+                $cust = current($custRef);
                 if ($action === 'approve') {
-                    $conn->begin_transaction();
                     try {
                         if ($app_type === 'Seller') {
-                            // Find Max Seller ID (Manual Generation)
-                            $max_res = $conn->query("SELECT MAX(Sell_Id) as max_id FROM SELLER");
-                            $sell_id = ($max_res->fetch_assoc()['max_id'] ?? 0) + 1;
-                            
                             $business_name = $details['business_name'] ?? ($cust['Cust_Firstname'] . ' ' . $cust['Cust_Lastname'] . "'s Store");
                             $store_email = $details['business_email'] ?? $cust['Cust_Email'];
                             $pass_hash = $cust['Cust_PsswdHash'];
 
                             // Check if seller already exists with this email
-                            $email_check = $conn->prepare("SELECT * FROM SELLER WHERE Sell_Email = ?");
-                            $email_check->bind_param("s", $store_email);
-                            $email_check->execute();
-                            if ($email_check->get_result()->fetch_assoc()) {
-                                throw new Exception("A seller with email '$store_email' already exists.");
+                            $all_sellers = array_merge(
+                                $database->getReference('seller')->getSnapshot()->getValue() ?: [],
+                                $database->getReference('seller')->getSnapshot()->getValue() ?: []
+                            );
+                            foreach ($all_sellers as $s) {
+                                if (($s['Sell_Email'] ?? '') === $store_email) {
+                                    throw new Exception("A seller with email '$store_email' already exists.");
+                                }
                             }
 
                             // Insert into SELLER
-                            $ins_stmt = $conn->prepare("INSERT INTO SELLER (Sell_Id, Sell_BusinessName, Sell_Email, Sell_PsswdHash, Sell_IsVerified, Sell_JoinedAt, Sell_IsActive) VALUES (?, ?, ?, ?, 1, NOW(), 1)");
-                            $ins_stmt->bind_param("isss", $sell_id, $business_name, $store_email, $pass_hash);
-                            if (!$ins_stmt->execute()) {
-                                throw new Exception("Failed to insert Seller record: " . $conn->error);
-                            }
+                            $newSell = $database->getReference('seller')->push();
+                            $newSell->set([
+                                'Sell_Id'           => $newSell->getKey(),
+                                'Sell_BusinessName' => $business_name,
+                                'Sell_Email'        => $store_email,
+                                'Sell_PsswdHash'    => $pass_hash,
+                                'Sell_IsVerified'   => 1,
+                                'Sell_IsActive'     => 1,
+                                'Sell_JoinedAt'     => date('Y-m-d H:i:s')
+                            ]);
 
                         } else if ($app_type === 'Driver') {
                             $license_no = $details['license_no'] ?? '';
@@ -70,47 +68,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                             $pass_hash = $cust['Cust_PsswdHash'];
 
                             // Check if driver already exists with this email
-                            $email_check = $conn->prepare("SELECT * FROM driver WHERE Driv_Email = ?");
-                            $email_check->bind_param("s", $email);
-                            $email_check->execute();
-                            if ($email_check->get_result()->fetch_assoc()) {
-                                throw new Exception("A driver with email '$email' already exists.");
+                            $all_drivers = array_merge(
+                                $database->getReference('driver')->getSnapshot()->getValue() ?: [],
+                                $database->getReference('driver')->getSnapshot()->getValue() ?: []
+                            );
+                            foreach ($all_drivers as $d) {
+                                if (($d['Driv_Email'] ?? '') === $email) {
+                                    throw new Exception("A driver with email '$email' already exists.");
+                                }
                             }
 
                             // Insert into driver
-                            $ins_stmt = $conn->prepare("INSERT INTO driver (Driv_FirstName, Driv_LastName, Driv_Email, Driv_PsswdHash, Driv_Phone, Driv_VehicleType, Driv_LicenseNo, Driv_Status, Driv_IsActive, Driv_CreatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, 'OFFLINE', 1, NOW())");
-                            $ins_stmt->bind_param("sssssss", $first_name, $last_name, $email, $pass_hash, $phone, $vehicle_type, $license_no);
-                            if (!$ins_stmt->execute()) {
-                                throw new Exception("Failed to insert Driver record: " . $conn->error);
-                            }
+                            $newDrv = $database->getReference('driver')->push();
+                            $newDrv->set([
+                                'Driv_Id'          => $newDrv->getKey(),
+                                'Driv_FirstName'   => $first_name,
+                                'Driv_LastName'    => $last_name,
+                                'Driv_Email'       => $email,
+                                'Driv_PsswdHash'   => $pass_hash,
+                                'Driv_Phone'       => $phone,
+                                'Driv_VehicleType' => $vehicle_type,
+                                'Driv_LicenseNo'   => $license_no,
+                                'Driv_Status'      => 'OFFLINE',
+                                'Driv_IsActive'    => 1,
+                                'Driv_Balance'     => 0,
+                                'Driv_CreatedAt'   => date('Y-m-d H:i:s')
+                            ]);
                         }
 
                         // Update Application Status to Approved
-                        $upd_stmt = $conn->prepare("UPDATE ROLE_APPLICATION SET App_Status = 'Approved' WHERE App_Id = ?");
-                        $upd_stmt->bind_param("i", $app_id);
-                        $upd_stmt->execute();
+                        $database->getReference('role_application')->getChild($app_key)->update(['App_Status' => 'Approved']);
 
-                        $conn->commit();
                         $msg = "Application #$app_id approved successfully! The user is now active as a $app_type.";
                         $msg_type = "success";
 
                     } catch (Exception $e) {
-                        $conn->rollback();
                         $msg = "Error approving application: " . $e->getMessage();
                         $msg_type = "error";
                     }
 
                 } else if ($action === 'reject') {
                     // Update Application Status to Rejected
-                    $upd_stmt = $conn->prepare("UPDATE ROLE_APPLICATION SET App_Status = 'Rejected' WHERE App_Id = ?");
-                    $upd_stmt->bind_param("i", $app_id);
-                    if ($upd_stmt->execute()) {
-                        $msg = "Application #$app_id has been rejected.";
-                        $msg_type = "success";
-                    } else {
-                        $msg = "Error rejecting application: " . $conn->error;
-                        $msg_type = "error";
-                    }
+                    $database->getReference('role_application')->getChild($app_key)->update(['App_Status' => 'Rejected']);
+                    $msg = "Application #$app_id has been rejected.";
+                    $msg_type = "success";
                 }
             } else {
                 $msg = "Customer associated with this application not found.";
@@ -123,11 +124,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 }
 
-// Fetch Pending Applications
-$pending_apps = $conn->query("SELECT a.*, c.Cust_Firstname, c.Cust_Lastname, c.Cust_Email FROM ROLE_APPLICATION a JOIN CUSTOMER c ON a.Cust_Id = c.Cust_Id WHERE a.App_Status = 'Pending' ORDER BY a.Created_At DESC");
+// Fetch Applications
+$all_apps = $database->getReference('role_application')->getSnapshot()->getValue() ?: [];
+$all_customers = array_merge(
+    $database->getReference('customer')->getSnapshot()->getValue() ?: [],
+    $database->getReference('customer')->getSnapshot()->getValue() ?: []
+);
 
-// Fetch Past Applications (Approved/Rejected)
-$past_apps = $conn->query("SELECT a.*, c.Cust_Firstname, c.Cust_Lastname, c.Cust_Email FROM ROLE_APPLICATION a JOIN CUSTOMER c ON a.Cust_Id = c.Cust_Id WHERE a.App_Status != 'Pending' ORDER BY a.Created_At DESC LIMIT 20");
+$cust_map = [];
+foreach ($all_customers as $c) {
+    if (isset($c['Cust_Id'])) $cust_map[$c['Cust_Id']] = $c;
+}
+
+$pending_apps = [];
+$past_apps = [];
+foreach ($all_apps as $a) {
+    $cust = $cust_map[$a['Cust_Id'] ?? ''] ?? [];
+    $a['Cust_Firstname'] = $cust['Cust_Firstname'] ?? 'Unknown';
+    $a['Cust_Lastname'] = $cust['Cust_Lastname'] ?? '';
+    $a['Cust_Email'] = $cust['Cust_Email'] ?? '';
+
+    if (($a['App_Status'] ?? '') === 'Pending') {
+        $pending_apps[] = $a;
+    } else {
+        $past_apps[] = $a;
+    }
+}
+usort($pending_apps, fn($a, $b) => strtotime($b['Created_At'] ?? 0) - strtotime($a['Created_At'] ?? 0));
+usort($past_apps, fn($a, $b) => strtotime($b['Created_At'] ?? 0) - strtotime($a['Created_At'] ?? 0));
+$past_apps = array_slice($past_apps, 0, 20);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -137,69 +162,7 @@ $past_apps = $conn->query("SELECT a.*, c.Cust_Firstname, c.Cust_Lastname, c.Cust
     <title>Role Applications - Zalora Admin</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/admin.css">
-    <style>
-        .app-details-box {
-            font-size: 11px;
-            background: var(--background);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-sm);
-            padding: 10px 14px;
-            margin-top: 6px;
-            line-height: 1.5;
-            color: var(--text-muted);
-        }
-        .btn-action {
-            border: none;
-            padding: 8px 15px;
-            border-radius: var(--radius-sm);
-            font-size: 11px;
-            font-weight: 700;
-            cursor: pointer;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            transition: var(--transition);
-        }
-        .btn-approve {
-            background: var(--accent-green-bg);
-            color: var(--accent-green-text);
-            border: 1px solid rgba(0, 0, 0, 0.02);
-        }
-        .btn-approve:hover { 
-            opacity: 0.85;
-            transform: translateY(-1px);
-        }
-        .btn-reject {
-            background: var(--accent-red-bg);
-            color: var(--accent-red-text);
-            border: 1px solid rgba(0, 0, 0, 0.02);
-        }
-        .btn-reject:hover { 
-            opacity: 0.85;
-            transform: translateY(-1px);
-        }
-        
-        .badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: var(--radius-sm);
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-        }
-        .badge-pending { background: rgba(241, 196, 15, 0.1); color: #d4ac0d; }
-        .badge-approved { background: var(--accent-green-bg); color: var(--accent-green-text); }
-        .badge-rejected { background: var(--accent-red-bg); color: var(--accent-red-text); }
- 
-        .alert-box {
-            padding: 12px 20px;
-            border-radius: var(--radius-sm);
-            font-size: 13px;
-            margin-bottom: 25px;
-            font-weight: 600;
-        }
-        .alert-success { background: var(--accent-green-bg); color: var(--accent-green-text); border: 1px solid rgba(0, 0, 0, 0.02); }
-        .alert-error { background: var(--accent-red-bg); color: var(--accent-red-text); border: 1px solid rgba(0, 0, 0, 0.02); }
-    </style>
+    <link rel="stylesheet" href="../assets/css/admin-applications.css?v=<?= time() ?>">
 </head>
 <body>
 
@@ -220,7 +183,7 @@ $past_apps = $conn->query("SELECT a.*, c.Cust_Firstname, c.Cust_Lastname, c.Cust
     <div class="card" style="margin-bottom: 2rem;">
         <h3 style="font-size: 13px; text-transform: uppercase; margin-top: 0; margin-bottom: 1.5rem; letter-spacing: 0.05em;">Pending Applications</h3>
         
-        <?php if ($pending_apps && $pending_apps->num_rows > 0): ?>
+        <?php if (count($pending_apps) > 0): ?>
             <table>
                 <thead>
                     <tr>
@@ -233,8 +196,8 @@ $past_apps = $conn->query("SELECT a.*, c.Cust_Firstname, c.Cust_Lastname, c.Cust
                     </tr>
                 </thead>
                 <tbody>
-                    <?php while($a = $pending_apps->fetch_assoc()): 
-                        $details_data = json_decode($a['App_Details'], true);
+                    <?php foreach($pending_apps as $a): 
+                        $details_data = is_array($a['App_Details']) ? $a['App_Details'] : json_decode($a['App_Details'], true);
                     ?>
                     <tr>
                         <td>#<?= $a['App_Id'] ?></td>
@@ -276,7 +239,7 @@ $past_apps = $conn->query("SELECT a.*, c.Cust_Firstname, c.Cust_Lastname, c.Cust
                             </div>
                         </td>
                     </tr>
-                    <?php endwhile; ?>
+                    <?php endforeach; ?>
                 </tbody>
             </table>
         <?php else: ?>
@@ -288,7 +251,7 @@ $past_apps = $conn->query("SELECT a.*, c.Cust_Firstname, c.Cust_Lastname, c.Cust
     <div class="card">
         <h3 style="font-size: 13px; text-transform: uppercase; margin-top: 0; margin-bottom: 1.5rem; letter-spacing: 0.05em;">Past Applications History (Last 20)</h3>
         
-        <?php if ($past_apps && $past_apps->num_rows > 0): ?>
+        <?php if (count($past_apps) > 0): ?>
             <table>
                 <thead>
                     <tr>
@@ -301,8 +264,8 @@ $past_apps = $conn->query("SELECT a.*, c.Cust_Firstname, c.Cust_Lastname, c.Cust
                     </tr>
                 </thead>
                 <tbody>
-                    <?php while($a = $past_apps->fetch_assoc()): 
-                        $details_data = json_decode($a['App_Details'], true);
+                    <?php foreach($past_apps as $a): 
+                        $details_data = is_array($a['App_Details']) ? $a['App_Details'] : json_decode($a['App_Details'], true);
                     ?>
                     <tr>
                         <td>#<?= $a['App_Id'] ?></td>
@@ -329,7 +292,7 @@ $past_apps = $conn->query("SELECT a.*, c.Cust_Firstname, c.Cust_Lastname, c.Cust
                             </span>
                         </td>
                     </tr>
-                    <?php endwhile; ?>
+                    <?php endforeach; ?>
                 </tbody>
             </table>
         <?php else: ?>

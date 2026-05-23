@@ -29,45 +29,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
 
     // Check if email already used by another driver
     if (empty($errors)) {
-        $check_stmt = $conn->prepare("SELECT * FROM driver WHERE Driv_Email = ? AND Driv_Id != ?");
-        $check_stmt->bind_param("si", $email, $driver_id);
-        $check_stmt->execute();
-        if ($check_stmt->get_result()->fetch_assoc()) {
-            $errors[] = "Email is already in use by another driver.";
+        $otherDrivers = $database->getReference('driver')->orderByChild('Driv_Email')->equalTo($email)->getSnapshot()->getValue();
+        if ($otherDrivers) {
+            foreach ($otherDrivers as $o_drv) {
+                if ($o_drv['Driv_Id'] != $driver_id) {
+                    $errors[] = "Email is already in use by another driver.";
+                    break;
+                }
+            }
         }
     }
 
     if (empty($errors)) {
-        if (!empty($new_pass)) {
-            if ($new_pass !== $confirm_pass) {
-                $errors[] = "Passwords do not match.";
-            } else {
-                $hash = password_hash($new_pass, PASSWORD_DEFAULT);
-                $upd = $conn->prepare("UPDATE driver SET Driv_FirstName = ?, Driv_LastName = ?, Driv_Email = ?, Driv_LicenseNo = ?, Driv_Phone = ?, Driv_VehicleType = ?, Driv_PsswdHash = ? WHERE Driv_Id = ?");
-                $upd->bind_param("sssssssi", $first_name, $last_name, $email, $license_no, $phone, $vehicle, $hash, $driver_id);
+        $driverRef = $database->getReference('driver')->orderByChild('Driv_Id')->equalTo($driver_id)->getSnapshot()->getValue();
+        if ($driverRef) {
+            $key = key($driverRef);
+            $node = 'driver';
+            
+            $updateData = [
+                'Driv_FirstName' => $first_name,
+                'Driv_LastName' => $last_name,
+                'Driv_Email' => $email,
+                'Driv_LicenseNo' => $license_no,
+                'Driv_Phone' => $phone,
+                'Driv_VehicleType' => $vehicle
+            ];
+
+            if (!empty($new_pass)) {
+                if ($new_pass !== $confirm_pass) {
+                    $errors[] = "Passwords do not match.";
+                } else {
+                    $updateData['Driv_PsswdHash'] = password_hash($new_pass, PASSWORD_DEFAULT);
+                }
+            }
+            
+            if (empty($errors)) {
+                try {
+                    $database->getReference($node)->getChild($key)->update($updateData);
+                    $_SESSION['success_msg'] = "Profile credentials updated successfully!";
+                    header("Location: settings.php");
+                    exit;
+                } catch (Exception $e) {
+                    $errors[] = "Database error: " . $e->getMessage();
+                }
             }
         } else {
-            $upd = $conn->prepare("UPDATE driver SET Driv_FirstName = ?, Driv_LastName = ?, Driv_Email = ?, Driv_LicenseNo = ?, Driv_Phone = ?, Driv_VehicleType = ? WHERE Driv_Id = ?");
-            $upd->bind_param("ssssssi", $first_name, $last_name, $email, $license_no, $phone, $vehicle, $driver_id);
-        }
-
-        if (empty($errors)) {
-            if ($upd->execute()) {
-                $_SESSION['success_msg'] = "Profile credentials updated successfully!";
-                header("Location: settings.php");
-                exit;
-            } else {
-                $errors[] = "Database error: " . $conn->error;
-            }
+            $errors[] = "Driver record not found to update.";
         }
     }
 }
 
 // Fetch Driver Info
-$stmt = $conn->prepare("SELECT * FROM driver WHERE Driv_Id = ?");
-$stmt->bind_param("i", $driver_id);
-$stmt->execute();
-$driver = $stmt->get_result()->fetch_assoc();
+$drivers = $database->getReference('driver')->orderByChild('Driv_Id')->equalTo($driver_id)->getSnapshot()->getValue();
+$driver = $drivers ? current($drivers) : null;
 
 if (!$driver) {
     die("Driver profile not found. Please contact support.");
@@ -80,69 +94,7 @@ if (!$driver) {
     <title>Zalora Driver — Settings</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/seller.css">
-    <style>
-        .settings-container { max-width: 800px; }
-        .settings-card { 
-            background: var(--white); 
-            border: 1px solid var(--border); 
-            padding: 40px; 
-            margin-bottom: 30px; 
-            border-radius: var(--radius-md);
-            box-shadow: var(--shadow-sm);
-            transition: var(--transition);
-        }
-        .settings-card:hover {
-            box-shadow: var(--shadow-md);
-        }
-        .settings-title {
-            font-size: 12px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 2rem;
-            border-bottom: 1px solid var(--border);
-            padding-bottom: 10px;
-            color: var(--text-main);
-        }
-        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
-        .form-group { display: flex; flex-direction: column; gap: 8px; }
-        .form-group label { font-size: 10px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.1em; }
-        .form-group input, .form-group select { 
-            width: 100%; 
-            padding: 12px 15px; 
-            border: 1px solid var(--border); 
-            font-family: inherit; 
-            font-size: 13px; 
-            outline: none; 
-            border-radius: var(--radius-sm);
-            transition: var(--transition);
-        }
-        .form-group input:focus, .form-group select:focus { border-color: var(--black); }
-        
-        .btn-save { 
-            background: var(--black); 
-            color: var(--white); 
-            border: 1px solid var(--black); 
-            padding: 14px 30px; 
-            font-weight: 700; 
-            text-transform: uppercase; 
-            cursor: pointer; 
-            transition: var(--transition);
-            font-size: 11px; 
-            letter-spacing: 0.1em; 
-            width: fit-content; 
-            border-radius: var(--radius-sm); 
-        }
-        .btn-save:hover { 
-            background: var(--white); 
-            color: var(--black); 
-            transform: translateY(-1px);
-        }
-
-        .alert { padding: 15px 20px; border-radius: var(--radius-sm); font-size: 13px; margin-bottom: 30px; font-weight: 600; }
-        .alert-success { background: var(--accent-green-bg); color: var(--accent-green-text); border: 1px solid rgba(0, 0, 0, 0.03); }
-        .alert-error { background: var(--accent-red-bg); color: var(--accent-red-text); border: 1px solid rgba(0, 0, 0, 0.03); }
-    </style>
+    <link rel="stylesheet" href="../assets/css/driver.css?v=<?= time() ?>">
 </head>
 <body>
 

@@ -10,16 +10,32 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'driver') {
 $driver_id = $_SESSION['user_id'];
 
 // Fetch All Active Deliveries (OUT_FOR_DELIVERY)
-$query = "SELECT s.*, o.Order_TotalAmnt, a.Addrs_Street, a.Addrs_City, a.Addrs_ZipCode, a.Addrs_RcpntName
-          FROM shipment s
-          JOIN ORDERS o ON s.Order_Id = o.Order_Id
-          JOIN ADDRESS a ON o.Addrs_Id = a.Addrs_id
-          WHERE s.Driv_Id = ? AND s.Ship_Status = 'OUT_FOR_DELIVERY'
-          ORDER BY s.Ship_Id ASC";
-$stmt = $conn->prepare($query);
-$stmt->bind_param("i", $driver_id);
-$stmt->execute();
-$queue = $stmt->get_result();
+$shipments = $database->getReference('shipment')->orderByChild('Driv_Id')->equalTo($driver_id)->getSnapshot()->getValue() ?: [];
+$queue_data = [];
+
+foreach ($shipments as $ship) {
+    if (($ship['Ship_Status'] ?? '') === 'OUT_FOR_DELIVERY') {
+        $order_id = $ship['Order_Id'];
+        
+        $orderRef = $database->getReference('orders')->orderByChild('Order_Id')->equalTo($order_id)->getSnapshot()->getValue();
+        if ($orderRef) {
+            $order = current($orderRef);
+            $addrs_id = $order['Addrs_Id'] ?? $order['Addrs_id'] ?? null;
+            
+            $addrRef = $database->getReference('address')->orderByChild('Addrs_id')->equalTo($addrs_id)->getSnapshot()->getValue();
+            $address = $addrRef ? current($addrRef) : [];
+            
+            $queue_data[] = [
+                'Order_Id' => $order_id,
+                'Order_TotalAmnt' => $order['Order_TotalAmnt'] ?? 0,
+                'Addrs_Street' => $address['Addrs_Street'] ?? 'Unknown Street',
+                'Addrs_City' => $address['Addrs_City'] ?? 'Unknown City',
+                'Addrs_ZipCode' => $address['Addrs_ZipCode'] ?? '0000',
+                'Addrs_RcpntName' => $address['Addrs_RcpntName'] ?? 'Unknown'
+            ];
+        }
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -28,59 +44,7 @@ $queue = $stmt->get_result();
     <title>Zalora Driver — My Queue</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/seller.css">
-    <style>
-        .queue-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 30px; }
-        .queue-count { font-size: 11px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.1em; }
-        
-        .queue-table { 
-            width: 100%; 
-            border-collapse: collapse; 
-            background: var(--white); 
-            border: 1px solid var(--border); 
-            border-radius: var(--radius-md);
-            overflow: hidden;
-            box-shadow: var(--shadow-sm);
-        }
-        .queue-table th { 
-            text-align: left; 
-            padding: 20px; 
-            font-size: 10px; 
-            font-weight: 700; 
-            text-transform: uppercase; 
-            letter-spacing: 0.1em; 
-            color: var(--text-light); 
-            border-bottom: 1px solid var(--border); 
-        }
-        .queue-table td { padding: 25px 20px; border-bottom: 1px solid var(--border); font-size: 13px; }
-        .order-pill { 
-            background: var(--background); 
-            padding: 4px 8px; 
-            font-size: 10px; 
-            font-weight: 700; 
-            border-radius: var(--radius-sm); 
-            border: 1px solid var(--border);
-        }
-        .addr-main { font-weight: 700; display: block; margin-bottom: 5px; }
-        .addr-sub { font-size: 11px; color: var(--text-light); }
-        .btn-action { 
-            background: var(--black); 
-            color: var(--white); 
-            border: none; 
-            padding: 10px 15px; 
-            font-size: 10px; 
-            font-weight: 700; 
-            cursor: pointer; 
-            text-transform: uppercase; 
-            text-decoration: none; 
-            display: inline-block; 
-            border-radius: var(--radius-sm);
-            transition: var(--transition);
-        }
-        .btn-action:hover {
-            opacity: 0.85;
-            transform: translateY(-1px);
-        }
-    </style>
+    <link rel="stylesheet" href="../assets/css/driver.css?v=<?= time() ?>">
 </head>
 <body>
 
@@ -91,7 +55,7 @@ $queue = $stmt->get_result();
         
         <header class="queue-header">
             <h1 class="page-title">MY DELIVERY QUEUE</h1>
-            <span class="queue-count"><?= $queue->num_rows ?> ASSIGNMENTS</span>
+            <span class="queue-count"><?= count($queue_data) ?> ASSIGNMENTS</span>
         </header>
 
         <table class="queue-table">
@@ -105,8 +69,8 @@ $queue = $stmt->get_result();
                 </tr>
             </thead>
             <tbody>
-                <?php if ($queue->num_rows > 0): ?>
-                    <?php while($row = $queue->fetch_assoc()): ?>
+                <?php if (count($queue_data) > 0): ?>
+                    <?php foreach($queue_data as $row): ?>
                     <tr>
                         <td><span class="order-pill">#<?= $row['Order_Id'] ?></span></td>
                         <td><?= htmlspecialchars($row['Addrs_RcpntName']) ?></td>
@@ -119,7 +83,7 @@ $queue = $stmt->get_result();
                             <a href="dashboard.php" class="btn-action">VIEW ON MAP</a>
                         </td>
                     </tr>
-                    <?php endwhile; ?>
+                    <?php endforeach; ?>
                 <?php else: ?>
                     <tr>
                         <td colspan="5" style="text-align:center; padding: 100px; color: #999;">

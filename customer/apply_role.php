@@ -23,50 +23,75 @@ $msg_type = "";
 $is_already_role = false;
 $is_blocked_by_other_role = false;
 
-// 1. Check if they are already the current role
-if ($role === 'seller') {
-    $role_check = $conn->prepare("SELECT * FROM SELLER WHERE Sell_Email = (SELECT Cust_Email FROM CUSTOMER WHERE Cust_Id = ?)");
-    $role_check->bind_param("i", $cust_id);
-    $role_check->execute();
-    if ($role_check->get_result()->fetch_assoc()) {
-        $is_already_role = true;
-    }
-} else {
-    $role_check = $conn->prepare("SELECT * FROM driver WHERE Driv_Email = (SELECT Cust_Email FROM CUSTOMER WHERE Cust_Id = ?)");
-    $role_check->bind_param("i", $cust_id);
-    $role_check->execute();
-    if ($role_check->get_result()->fetch_assoc()) {
-        $is_already_role = true;
+// Fetch current customer email
+$cust_email = '';
+$all_customers = array_merge(
+    $database->getReference('customer')->getSnapshot()->getValue() ?: [],
+    $database->getReference('customer')->getSnapshot()->getValue() ?: []
+);
+foreach ($all_customers as $c) {
+    if (($c['Cust_Id'] ?? 0) == $cust_id) {
+        $cust_email = $c['Cust_Email'] ?? '';
+        break;
     }
 }
 
-// 2. Check if they are already the OTHER role or have an application for it
+// Check role status
 if ($role === 'seller') {
-    // Check if they are a driver
-    $other_db_check = $conn->prepare("SELECT * FROM driver WHERE Driv_Email = (SELECT Cust_Email FROM CUSTOMER WHERE Cust_Id = ?)");
-    $other_db_check->bind_param("i", $cust_id);
-    $other_db_check->execute();
-    if ($other_db_check->get_result()->fetch_assoc()) {
-        $is_blocked_by_other_role = true;
+    $all_sellers = array_merge(
+        $database->getReference('seller')->getSnapshot()->getValue() ?: [],
+        $database->getReference('seller')->getSnapshot()->getValue() ?: []
+    );
+    foreach ($all_sellers as $s) {
+        if (($s['Sell_Email'] ?? '') === $cust_email && !empty($cust_email)) {
+            $is_already_role = true;
+            break;
+        }
+    }
+    
+    $all_drivers = array_merge(
+        $database->getReference('driver')->getSnapshot()->getValue() ?: [],
+        $database->getReference('driver')->getSnapshot()->getValue() ?: []
+    );
+    foreach ($all_drivers as $d) {
+        if (($d['Driv_Email'] ?? '') === $cust_email && !empty($cust_email)) {
+            $is_blocked_by_other_role = true;
+            break;
+        }
     }
 } else {
-    // Check if they are a seller
-    $other_db_check = $conn->prepare("SELECT * FROM SELLER WHERE Sell_Email = (SELECT Cust_Email FROM CUSTOMER WHERE Cust_Id = ?)");
-    $other_db_check->bind_param("i", $cust_id);
-    $other_db_check->execute();
-    if ($other_db_check->get_result()->fetch_assoc()) {
-        $is_blocked_by_other_role = true;
+    $all_drivers = array_merge(
+        $database->getReference('driver')->getSnapshot()->getValue() ?: [],
+        $database->getReference('driver')->getSnapshot()->getValue() ?: []
+    );
+    foreach ($all_drivers as $d) {
+        if (($d['Driv_Email'] ?? '') === $cust_email && !empty($cust_email)) {
+            $is_already_role = true;
+            break;
+        }
+    }
+    
+    $all_sellers = array_merge(
+        $database->getReference('seller')->getSnapshot()->getValue() ?: [],
+        $database->getReference('seller')->getSnapshot()->getValue() ?: []
+    );
+    foreach ($all_sellers as $s) {
+        if (($s['Sell_Email'] ?? '') === $cust_email && !empty($cust_email)) {
+            $is_blocked_by_other_role = true;
+            break;
+        }
     }
 }
 
 // Check if they have a pending/approved application for the OTHER role
 if (!$is_blocked_by_other_role) {
     $other_app_type = $role === 'seller' ? 'Driver' : 'Seller';
-    $other_app_check = $conn->prepare("SELECT * FROM ROLE_APPLICATION WHERE Cust_Id = ? AND App_Type = ? AND App_Status IN ('Pending', 'Approved')");
-    $other_app_check->bind_param("is", $cust_id, $other_app_type);
-    $other_app_check->execute();
-    if ($other_app_check->get_result()->fetch_assoc()) {
-        $is_blocked_by_other_role = true;
+    $all_apps = $database->getReference('role_application')->getSnapshot()->getValue() ?: [];
+    foreach ($all_apps as $a) {
+        if (($a['Cust_Id'] ?? 0) == $cust_id && ($a['App_Type'] ?? '') === $other_app_type && in_array($a['App_Status'] ?? '', ['Pending', 'Approved'])) {
+            $is_blocked_by_other_role = true;
+            break;
+        }
     }
 }
 
@@ -102,25 +127,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $app_type = $role === 'driver' ? 'Driver' : 'Seller';
             
             // Check if there is an existing pending application
-            $check_stmt = $conn->prepare("SELECT * FROM ROLE_APPLICATION WHERE Cust_Id = ? AND App_Type = ? AND App_Status = 'Pending'");
-            $check_stmt->bind_param("is", $cust_id, $app_type);
-            $check_stmt->execute();
-            $existing = $check_stmt->get_result()->fetch_assoc();
+            $all_apps = $database->getReference('role_application')->getSnapshot()->getValue() ?: [];
+            $existing = false;
+            foreach ($all_apps as $a) {
+                if (($a['Cust_Id'] ?? 0) == $cust_id && ($a['App_Type'] ?? '') === $app_type && ($a['App_Status'] ?? '') === 'Pending') {
+                    $existing = true;
+                    break;
+                }
+            }
             
             if ($existing) {
                 $msg = "You already have a pending application for this role.";
                 $msg_type = "error";
             } else {
                 // Insert application
-                $insert_stmt = $conn->prepare("INSERT INTO ROLE_APPLICATION (Cust_Id, App_Type, App_Details, App_Status, Created_At) VALUES (?, ?, ?, 'Pending', NOW())");
-                $insert_stmt->bind_param("iss", $cust_id, $app_type, $details_json);
-                if ($insert_stmt->execute()) {
-                    $msg = "Application submitted successfully! Our admin team will review it shortly.";
-                    $msg_type = "success";
-                } else {
-                    $msg = "Error submitting application. Please try again.";
-                    $msg_type = "error";
-                }
+                $newApp = $database->getReference('role_application')->push();
+                $newApp->set([
+                    'App_Id' => $newApp->getKey(),
+                    'Cust_Id' => $cust_id,
+                    'App_Type' => $app_type,
+                    'App_Details' => $details_json,
+                    'App_Status' => 'Pending',
+                    'Created_At' => date('Y-m-d H:i:s')
+                ]);
+                $msg = "Application submitted successfully! Our admin team will review it shortly.";
+                $msg_type = "success";
             }
         }
     }
@@ -128,10 +159,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
 // Fetch existing application status
 $app_type_db = $role === 'driver' ? 'Driver' : 'Seller';
-$status_stmt = $conn->prepare("SELECT * FROM ROLE_APPLICATION WHERE Cust_Id = ? AND App_Type = ? ORDER BY Created_At DESC LIMIT 1");
-$status_stmt->bind_param("is", $cust_id, $app_type_db);
-$status_stmt->execute();
-$application = $status_stmt->get_result()->fetch_assoc();
+$all_apps_status = $database->getReference('role_application')->getSnapshot()->getValue() ?: [];
+$application = null;
+$latest_time = 0;
+foreach ($all_apps_status as $a) {
+    if (($a['Cust_Id'] ?? 0) == $cust_id && ($a['App_Type'] ?? '') === $app_type_db) {
+        $time = strtotime($a['Created_At'] ?? 0);
+        if ($time > $latest_time) {
+            $latest_time = $time;
+            $application = $a;
+        }
+    }
+}
 
 // Get user name for header
 $user_name = $_SESSION['user_name'] ?? 'User';
@@ -144,181 +183,7 @@ $user_name = $_SESSION['user_name'] ?? 'User';
     <title>ZALORA — Apply for <?= $role_title ?></title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
     <link rel="stylesheet" href="../assets/css/global.css?v=<?= time() ?>"/>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Montserrat', sans-serif; background: #fff; color: #000; overflow-x: hidden; display: flex; flex-direction: column; min-height: 100vh; }
-        
-        /* HEADER STYLES */
-        .top-promo-bar { background: #fff; border-bottom: 1px solid #eee; padding: 10px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
-        .promo-container { max-width: 1400px; margin: 0 auto; display: flex; justify-content: space-around; }
-        .promo-item { color: #000; text-decoration: none; display: flex; align-items: center; gap: 8px; }
-        header { background: #fff; position: sticky; top: 0; z-index: 1000; border-bottom: 1px solid #eee; }
-        .main-header { max-width: 1400px; margin: 0 auto; padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; }
-        .logo { font-size: 24px; font-weight: 400; letter-spacing: 0.3em; text-decoration: none; color: #000; }
-        .search-bar-wrap { flex: 1; max-width: 500px; margin: 0 40px; position: relative; }
-        .search-input { width: 100%; padding: 12px 25px; border: 1px solid #ddd; border-radius: 100px; font-size: 13px; background: #f5f5f5; outline: none; }
-        .search-icon-btn { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); background: #000; color: #fff; border: none; width: 34px; height: 34px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-        .header-actions { display: flex; gap: 20px; }
-        .header-action-item { color: #000; text-decoration: none; font-size: 13px; display: flex; align-items: center; gap: 5px; }
-        .nav-bar { border-bottom: 1px solid #eee; }
-        .nav-container { max-width: 1400px; margin: 0 auto; display: flex; justify-content: center; gap: 40px; padding: 15px 0; }
-        .nav-item { font-size: 11px; font-weight: 700; text-transform: uppercase; text-decoration: none; color: #000; letter-spacing: 0.1em; }
-        .badge-count { position: absolute; top: -8px; right: -12px; background: #000; color: #fff; font-size: 9px; padding: 2px 6px; border-radius: 10px; }
-
-        /* LAYOUT */
-        .page-wrapper {
-            max-width: 1200px;
-            margin: 40px auto;
-            width: 100%;
-            display: flex;
-            gap: 40px;
-            padding: 0 20px;
-            flex: 1;
-        }
-
-        /* SIDEBAR */
-        .sidebar {
-            width: 280px;
-            background: #f8f8f8;
-            border-radius: 12px;
-            padding: 25px 0;
-            flex-shrink: 0;
-            height: fit-content;
-        }
-        .sidebar h4 {
-            font-size: 12px;
-            font-weight: 800;
-            margin-bottom: 15px;
-            padding: 0 25px;
-            text-transform: uppercase;
-        }
-        .sidebar-menu {
-            list-style: none;
-        }
-        .sidebar-menu li a {
-            display: block;
-            padding: 15px 25px;
-            color: #333;
-            text-decoration: none;
-            font-size: 13px;
-            font-weight: 500;
-            transition: all 0.2s;
-        }
-        .sidebar-menu li a:hover {
-            background: #eee;
-        }
-        .sidebar-menu li a.active {
-            background: #444;
-            color: #fff;
-        }
-
-        /* MAIN CONTENT */
-        .content-area {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 30px;
-        }
-
-        .profile-card {
-            border: 1px solid #eaeaea;
-            border-radius: 16px;
-            padding: 30px 40px;
-            background: #fff;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.02);
-        }
-
-        .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 30px;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 15px;
-        }
-
-        .card-title {
-            font-size: 18px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        /* FORM STYLES */
-        .form-group {
-            margin-bottom: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        .form-group label {
-            font-size: 12px;
-            font-weight: 700;
-            text-transform: uppercase;
-            color: #333;
-        }
-        .form-control {
-            width: 100%;
-            padding: 12px 15px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 13px;
-            outline: none;
-            font-family: inherit;
-        }
-        .form-control:focus {
-            border-color: #000;
-        }
-        textarea.form-control {
-            resize: vertical;
-            min-height: 120px;
-        }
-        
-        .btn-submit {
-            background: #000;
-            color: #fff;
-            border: 1px solid #000;
-            padding: 15px 30px;
-            border-radius: 6px;
-            font-size: 12px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            cursor: pointer;
-            transition: 0.2s;
-            width: fit-content;
-        }
-        .btn-submit:hover {
-            background: #fff;
-            color: #000;
-        }
-
-        /* MESSAGES */
-        .alert {
-            padding: 15px 20px;
-            border-radius: 8px;
-            font-size: 13px;
-            margin-bottom: 25px;
-            font-weight: 600;
-        }
-        .alert-success { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
-        .alert-error { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
-        .alert-info { background: #e3f2fd; color: #1565c0; border: 1px solid #bbdefb; }
-
-        /* STATUS BADGE */
-        .status-badge {
-            display: inline-block;
-            padding: 6px 12px;
-            border-radius: 50px;
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-        .status-pending { background: #fff8e1; color: #f57f17; border: 1px solid #ffe082; }
-        .status-approved { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
-        .status-rejected { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
-    </style>
+    <link rel="stylesheet" href="../assets/css/apply-role.css?v=<?= time() ?>"/>
 </head>
 <body>
 

@@ -1,0 +1,19 @@
+:root { --black: #000; --white: #fff; --bg-light: #f9fafb; --border: #f1f1f1; --text-muted: #666; --text-light: #999; }
+        body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg-light); display: flex; }
+        .sidebar { width: 240px; background: var(--white); border-right: 1px solid var(--border); position: fixed; height: 100vh; z-index: 100; }
+        .main-wrapper { margin-left: 240px; flex-grow: 1; padding: 40px; min-width: 0; }
+        .promo-grid { display: grid; grid-template-columns: 1fr 380px; gap: 30px; margin-top: 30px; }
+        .content-card { background: var(--white); padding: 30px; border: 1px solid var(--border); margin-bottom: 25px; }
+        .card-title { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 25px; color: var(--black); border-bottom: 2px solid #000; display: inline-block; padding-bottom: 5px; }
+        .promo-table { width: 100%; border-collapse: collapse; }
+        .promo-table th { text-align: left; font-size: 10px; color: var(--text-light); text-transform: uppercase; padding: 15px 0; border-bottom: 1px solid var(--border); letter-spacing: 0.1em; }
+        .promo-table td { padding: 20px 0; border-bottom: 1px solid #fafafa; font-size: 13px; }
+        .coupon-pill { font-family: monospace; font-weight: 700; background: #f8f9fa; padding: 6px 12px; border: 1px dashed #ced4da; border-radius: 4px; }
+        .status-badge { padding: 6px 12px; border-radius: 20px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+        .status-pending { background: #fffbeb; color: #d97706; }
+        .status-approved { background: #f0fdf4; color: #16a34a; }
+        .status-rejected { background: #fef2f2; color: #dc2626; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; font-size: 10px; font-weight: 800; color: var(--text-light); margin-bottom: 8px; text-transform: uppercase; }
+        .form-control { width: 100%; padding: 12px; border: 1px solid var(--border); background: #fafafa; font-family: inherit; font-size: 14px; box-sizing: border-box; }
+        .btn-primary-full { width: 100%; background: #000; color: #fff; border: none; padding: 15px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer; }

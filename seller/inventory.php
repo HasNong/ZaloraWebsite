@@ -10,43 +10,72 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'seller') {
 
 $seller_id = $_SESSION['user_id'];
 $filter = $_GET['filter'] ?? 'all';
-$search = $_GET['search'] ?? '';
+$search = strtolower($_GET['search'] ?? '');
 
-// Build Query
-$where_clause = "WHERE p.Sell_Id = ? AND p.Prod_IsActive != 2"; // Hide rejected
-$params = [$seller_id];
-$types = "i";
+$productsRef = $database->getReference('product')->orderByChild('Sell_Id')->equalTo($seller_id)->getSnapshot()->getValue() ?: [];
+$variantsRef = $database->getReference('product_variant')->getSnapshot()->getValue() ?: [];
+$imagesRef = $database->getReference('product_image')->getSnapshot()->getValue() ?: [];
+$categoriesRef = $database->getReference('category')->getSnapshot()->getValue() ?: [];
 
-if ($search) {
-    $where_clause .= " AND (p.Prod_Name LIKE ? OR c.Ctgry_Name LIKE ?)";
-    $sp = "%$search%";
-    $params[] = $sp; $params[] = $sp;
-    $types .= "ss";
+$all_count = 0;
+$filtered_products = [];
+
+foreach ($productsRef as $pid => $p) {
+    // Hide rejected
+    if (($p['Prod_IsActive'] ?? 1) == 2) continue;
+    
+    $all_count++;
+    
+    // Category Name
+    $cat_name = 'General';
+    foreach ($categoriesRef as $cid => $c) {
+        if (($c['Ctgry_Id'] ?? '') == ($p['Ctgry_Id'] ?? '')) {
+            $cat_name = $c['Ctgry_Name'] ?? 'General';
+            break;
+        }
+    }
+    
+    // Search Filter
+    if ($search) {
+        $pname = strtolower($p['Prod_Name'] ?? '');
+        $cname = strtolower($cat_name);
+        if (strpos($pname, $search) === false && strpos($cname, $search) === false) {
+            continue;
+        }
+    }
+    
+    // Calculate Stock
+    $stock = 0;
+    foreach ($variantsRef as $vid => $v) {
+        if (($v['Prod_Id'] ?? '') == ($p['Prod_Id'] ?? '')) {
+            $stock += (int)($v['PVar_StockQuantity'] ?? 0);
+        }
+    }
+    
+    // Tab Filters
+    if ($filter === 'in_stock' && $stock <= 10) continue;
+    if ($filter === 'low_stock' && ($stock < 1 || $stock > 10)) continue;
+    if ($filter === 'drafts' && ($p['Prod_IsActive'] ?? 1) != 0) continue;
+    
+    // Get primary image
+    $img = 'https://via.placeholder.com/50';
+    foreach ($imagesRef as $imgId => $pi) {
+        if (($pi['Prod_Id'] ?? '') == ($p['Prod_Id'] ?? '') && ($pi['PImg_IsPrimary'] ?? 0) == 1) {
+            $img = $pi['PImg_ImgUrl'] ?? '';
+            break;
+        }
+    }
+    
+    $p['total_stock'] = $stock;
+    $p['Ctgry_Name'] = $cat_name;
+    $p['img'] = $img;
+    
+    $filtered_products[] = $p;
 }
 
-if ($filter === 'in_stock') {
-    $where_clause .= " AND (SELECT SUM(PVar_StockQuantity) FROM product_variant WHERE Prod_Id = p.Prod_Id) > 10";
-} elseif ($filter === 'low_stock') {
-    $where_clause .= " AND (SELECT SUM(PVar_StockQuantity) FROM product_variant WHERE Prod_Id = p.Prod_Id) BETWEEN 1 AND 10";
-} elseif ($filter === 'drafts') {
-    $where_clause .= " AND p.Prod_IsActive = 0";
-}
-
-$query = "SELECT p.*, c.Ctgry_Name, 
-          (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id AND PImg_IsPrimary = 1 LIMIT 1) as img,
-          (SELECT SUM(PVar_StockQuantity) FROM product_variant WHERE Prod_Id = p.Prod_Id) as total_stock
-          FROM product p
-          LEFT JOIN category c ON p.Ctgry_Id = c.Ctgry_Id
-          $where_clause
-          ORDER BY p.Prod_CreatedAt DESC";
-
-$stmt = $conn->prepare($query);
-$stmt->bind_param($types, ...$params);
-$stmt->execute();
-$products = $stmt->get_result();
-
-// Counts for tabs
-$all_count = $conn->query("SELECT COUNT(*) FROM product WHERE Sell_Id = $seller_id AND Prod_IsActive != 2")->fetch_row()[0];
+usort($filtered_products, function($a, $b) {
+    return strtotime($b['Prod_CreatedAt'] ?? '2000-01-01') <=> strtotime($a['Prod_CreatedAt'] ?? '2000-01-01');
+});
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -56,16 +85,7 @@ $all_count = $conn->query("SELECT COUNT(*) FROM product WHERE Sell_Id = $seller_
     <title>Seller Center - Inventory Management</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/seller.css">
-    <style>
-        .search-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
-        .search-box { position: relative; width: 300px; }
-        .search-box input { width: 100%; padding: 10px 10px 10px 40px; border: 1px solid #eee; font-size: 13px; outline: none; }
-        .search-box svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #999; }
-        
-        .filter-tabs { display: flex; gap: 1px; background: #eee; border: 1px solid #eee; }
-        .filter-tabs button { background: #fff; border: none; padding: 10px 20px; font-size: 11px; font-weight: 700; color: #666; cursor: pointer; text-transform: uppercase; }
-        .filter-tabs button.active { background: #000; color: #fff; }
-    </style>
+    <link rel="stylesheet" href="../assets/css/seller-inventory.css?v=<?= time() ?>">
 </head>
 <body>
 
@@ -127,15 +147,15 @@ $all_count = $conn->query("SELECT COUNT(*) FROM product WHERE Sell_Id = $seller_
                     </tr>
                 </thead>
                 <tbody>
-                    <?php if ($products->num_rows > 0): ?>
-                        <?php while($p = $products->fetch_assoc()): 
+                    <?php if (count($filtered_products) > 0): ?>
+                        <?php foreach($filtered_products as $p): 
                             $stock = $p['total_stock'] ?? 0;
                             $stock_percent = min(($stock / 100) * 100, 100);
                             
                             $status_class = "active";
                             $status_label = "ACTIVE";
                             
-                            if ($p['Prod_IsActive'] == 0) {
+                            if (($p['Prod_IsActive'] ?? 1) == 0) {
                                 $status_class = "low";
                                 $status_label = "PENDING";
                             } elseif ($stock <= 0) {
@@ -155,14 +175,14 @@ $all_count = $conn->query("SELECT COUNT(*) FROM product WHERE Sell_Id = $seller_
                             <td style="padding-left: 2rem;"><input type="checkbox"></td>
                             <td>
                                 <div class="prod-details">
-                                    <img src="<?= $img_path ?>" class="prod-thumb">
+                                    <img src="<?= htmlspecialchars($img_path) ?>" class="prod-thumb">
                                     <div class="prod-info">
                                         <h4><?= htmlspecialchars($p['Prod_Name']) ?></h4>
-                                        <p><?= htmlspecialchars($p['Ctgry_Name'] ?? 'General') ?></p>
+                                        <p><?= htmlspecialchars($p['Ctgry_Name']) ?></p>
                                     </div>
                                 </div>
                             </td>
-                            <td style="font-family: monospace; color: #666;">ZAL-<?= date('Y', strtotime($p['Prod_CreatedAt'])) ?>-<?= str_pad($p['Prod_Id'], 4, '0', STR_PAD_LEFT) ?></td>
+                            <td style="font-family: monospace; color: #666;">ZAL-<?= date('Y', strtotime($p['Prod_CreatedAt'] ?? date('Y-m-d'))) ?>-<?= substr(md5($p['Prod_Id']), 0, 4) ?></td>
                             <td style="font-weight: 600;">$<?= number_format($p['Prod_BasePrice'], 2) ?></td>
                             <td>
                                 <div class="stock-bar-wrap">
@@ -176,13 +196,13 @@ $all_count = $conn->query("SELECT COUNT(*) FROM product WHERE Sell_Id = $seller_
                                     <a href="edit_product.php?id=<?= $p['Prod_Id'] ?>" style="color: inherit;" title="Edit Product">
                                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
                                     </a>
-                                    <button onclick="deleteProduct(<?= $p['Prod_Id'] ?>, '<?= addslashes($p['Prod_Name']) ?>')" style="background:none; border:none; cursor:pointer; color: #e74c3c;" title="Delete Product">
+                                    <button onclick="deleteProduct('<?= $p['Prod_Id'] ?>', '<?= addslashes($p['Prod_Name']) ?>')" style="background:none; border:none; cursor:pointer; color: #e74c3c;" title="Delete Product">
                                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
                                     </button>
                                 </div>
                             </td>
                         </tr>
-                        <?php endwhile; ?>
+                        <?php endforeach; ?>
                     <?php else: ?>
                         <tr><td colspan="7" style="text-align:center; padding: 40px; color:#999;">No products found matching your criteria.</td></tr>
                     <?php endif; ?>
@@ -191,7 +211,7 @@ $all_count = $conn->query("SELECT COUNT(*) FROM product WHERE Sell_Id = $seller_
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2rem;">
-            <p style="font-size: 12px; color: #999;">Showing <?= $products->num_rows ?> results</p>
+            <p style="font-size: 12px; color: #999;">Showing <?= count($filtered_products) ?> results</p>
         </div>
 
     </main>

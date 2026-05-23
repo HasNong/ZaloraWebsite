@@ -1,0 +1,10 @@
+body { background: #f9f9f9; font-family: 'Montserrat', sans-serif; }
+        .container { max-width: 600px; margin: 60px auto; padding: 0 20px; }
+        .card { background: #fff; border: 1px solid #eee; padding: 40px; }
+        .title { font-size: 20px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 30px; text-align: center; }
+        .form-group { margin-bottom: 25px; }
+        .form-group label { display: block; font-size: 10px; font-weight: 800; color: #999; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px; }
+        .form-group textarea, .form-group input { width: 100%; padding: 15px; border: 1px solid #eee; font-family: inherit; font-size: 14px; box-sizing: border-box; }
+        .btn-submit { width: 100%; background: #000; color: #fff; border: none; padding: 20px; font-weight: 700; text-transform: uppercase; cursor: pointer; letter-spacing: 0.1em; }
+        .nav-logo { font-size: 24px; font-weight: 700; text-align: center; display: block; margin: 30px 0; text-decoration: none; color: #000; letter-spacing: 0.2em; }
+        .policy-note { font-size: 12px; color: #666; line-height: 1.6; margin-top: 30px; padding: 20px; background: #fafafa; border: 1px dashed #eee; }

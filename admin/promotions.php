@@ -10,33 +10,49 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
 
 // Handle Approval / Rejection
 if (isset($_GET['action']) && isset($_GET['id'])) {
-    $id = intval($_GET['id']);
+    $id = $_GET['id'];
     $action = $_GET['action'];
-    
-    if ($action === 'approve') {
-        $conn->query("UPDATE coupon SET Is_Approved = 1 WHERE Coup_Id = $id");
-    } elseif ($action === 'reject') {
-        $conn->query("UPDATE coupon SET Is_Approved = -1 WHERE Coup_Id = $id");
+
+    $coupRef = $database->getReference('coupon')->orderByChild('Coup_Id')->equalTo(intval($id))->getSnapshot()->getValue();
+    if ($coupRef) {
+        $key = key($coupRef);
+        $status = ($action === 'approve') ? 1 : -1;
+        $database->getReference('coupon')->getChild($key)->update(['Is_Approved' => $status]);
     }
     header("Location: promotions.php");
     exit;
 }
 
-// Fetch Pending Requests
-$query = "SELECT c.*, s.Cust_Firstname as seller_fname, s.Cust_Lastname as seller_lname 
-          FROM coupon c 
-          LEFT JOIN customer s ON c.Seller_Id = s.Cust_Id 
-          WHERE c.Is_Approved = 0 
-          ORDER BY c.Coup_ValidFrom ASC";
-$pending = $conn->query($query);
+// Fetch Sellers for mapping
+$all_sellers = fb_merge_nodes($database, 'seller');
+$seller_map = [];
+foreach ($all_sellers as $s) {
+    if (isset($s['Sell_Id'])) {
+        $seller_map[$s['Sell_Id']] = $s;
+    }
+}
 
-// Fetch Approved Coupons
-$query_app = "SELECT c.*, s.Cust_Firstname as seller_fname, s.Cust_Lastname as seller_lname 
-              FROM coupon c 
-              LEFT JOIN customer s ON c.Seller_Id = s.Cust_Id 
-              WHERE c.Is_Approved = 1 
-              ORDER BY c.Coup_ValidFrom DESC";
-$approved = $conn->query($query_app);
+// Fetch Coupons
+$all_coupons = $database->getReference('coupon')->getSnapshot()->getValue() ?: [];
+$pending = [];
+$approved = [];
+
+foreach ($all_coupons as $c) {
+    if (!is_array($c)) {
+        continue;
+    }
+    $seller_id = $c['Seller_Id'] ?? null;
+    $seller = $seller_map[$seller_id] ?? [];
+    $c['seller_name'] = $seller['Sell_BusinessName'] ?? 'Unknown Seller';
+
+    if (($c['Is_Approved'] ?? 0) == 0) {
+        $pending[] = $c;
+    } elseif (($c['Is_Approved'] ?? 0) == 1) {
+        $approved[] = $c;
+    }
+}
+usort($pending, fn($a, $b) => strtotime($a['Coup_ValidFrom'] ?? 0) - strtotime($b['Coup_ValidFrom'] ?? 0));
+usort($approved, fn($a, $b) => strtotime($b['Coup_ValidFrom'] ?? 0) - strtotime($a['Coup_ValidFrom'] ?? 0));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -60,7 +76,7 @@ $approved = $conn->query($query_app);
         <!-- PENDING REQUESTS -->
         <div class="card">
             <div class="section-title">Pending Seller Requests</div>
-            <?php if ($pending->num_rows > 0): ?>
+            <?php if (count($pending) > 0): ?>
             <table>
                 <thead>
                     <tr>
@@ -72,10 +88,10 @@ $approved = $conn->query($query_app);
                     </tr>
                 </thead>
                 <tbody>
-                    <?php while($p = $pending->fetch_assoc()): ?>
+                    <?php foreach($pending as $p): ?>
                     <tr>
                         <td>
-                            <strong><?= htmlspecialchars($p['seller_fname'] . ' ' . $p['seller_lname']) ?></strong>
+                            <strong><?= htmlspecialchars($p['seller_name']) ?></strong>
                             <span class="seller-tag">SELLER ID: <?= $p['Seller_Id'] ?></span>
                         </td>
                         <td><span class="coupon-badge"><?= htmlspecialchars($p['Coup_Code']) ?></span></td>
@@ -94,7 +110,7 @@ $approved = $conn->query($query_app);
                             <a href="promotions.php?action=reject&id=<?= $p['Coup_Id'] ?>" class="btn-action btn-reject">Reject</a>
                         </td>
                     </tr>
-                    <?php endwhile; ?>
+                    <?php endforeach; ?>
                 </tbody>
             </table>
             <?php else: ?>
@@ -117,15 +133,15 @@ $approved = $conn->query($query_app);
                     </tr>
                 </thead>
                 <tbody>
-                    <?php if ($approved->num_rows > 0): ?>
-                        <?php while($a = $approved->fetch_assoc()): ?>
+                    <?php if (count($approved) > 0): ?>
+                        <?php foreach ($approved as $a): ?>
                         <tr>
-                            <td><?= htmlspecialchars($a['seller_fname'] . ' ' . $a['seller_lname']) ?></td>
+                            <td><?= htmlspecialchars($a['seller_name']) ?></td>
                             <td><span class="coupon-badge"><?= htmlspecialchars($a['Coup_Code']) ?></span></td>
                             <td><span class="status-active">LIVE</span></td>
                             <td style="text-align: right; font-weight: 600;"><?= $a['Coup_UsedCount'] ?> / <?= $a['Coup_MaxUses'] ?> <span style="font-size: 10px; color: var(--text-light);">REDEEMED</span></td>
                         </tr>
-                        <?php endwhile; ?>
+                        <?php endforeach; ?>
                     <?php else: ?>
                         <tr><td colspan="4" style="text-align:center; padding: 40px; color: var(--text-light);">No live vouchers currently active on the platform.</td></tr>
                     <?php endif; ?>

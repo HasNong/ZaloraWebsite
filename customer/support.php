@@ -11,29 +11,39 @@ $cust_id = $_SESSION['user_id'];
 $msg = "";
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_ticket'])) {
-    $subject = $_POST['subject'] ?? '';
-    $desc = $_POST['desc'] ?? '';
+    $subject = trim($_POST['subject'] ?? '');
+    $desc = trim($_POST['desc'] ?? '');
     $category = $_POST['category'] ?? 'OTHER';
-    $order_id = !empty($_POST['order_id']) ? intval($_POST['order_id']) : null;
+    $order_id = !empty($_POST['order_id']) ? $_POST['order_id'] : null;
 
     if ($subject && $desc) {
-        $res = $conn->query("SELECT MAX(Tcket_Id) as max_id FROM support_ticket");
-        $id = ($res->fetch_assoc()['max_id'] ?? 0) + 1;
-        
-        $stmt = $conn->prepare("INSERT INTO support_ticket (Tcket_Id, Cust_Id, Order_Id, Tcket_Subject, Tcket_Desc, Tcket_Category, Tcket_Status, Tcket_CreatedAt) VALUES (?, ?, ?, ?, ?, ?, 'OPEN', NOW())");
-        $stmt->bind_param("iiisss", $id, $cust_id, $order_id, $subject, $desc, $category);
-        if ($stmt->execute()) {
-            $msg = "Your support ticket #$id has been submitted successfully!";
-        } else {
-            $msg = "Error: " . $conn->error;
+        try {
+            $ticket_id = fb_next_id($database, 'support_ticket', 'Tcket_Id');
+            $ticketRef = $database->getReference('support_ticket')->push();
+            $ticketRef->set([
+                'Tcket_Id' => $ticket_id,
+                'Cust_Id' => $cust_id,
+                'Order_Id' => $order_id,
+                'Tcket_Subject' => $subject,
+                'Tcket_Desc' => $desc,
+                'Tcket_Category' => $category,
+                'Tcket_Status' => 'OPEN',
+                'Tcket_CreatedAt' => date('Y-m-d H:i:s'),
+            ]);
+            $msg = "Your support ticket #$ticket_id has been submitted successfully!";
+        } catch (Exception $e) {
+            $msg = "Error: " . $e->getMessage();
         }
     }
 }
 
-// Fetch open tickets
-$tickets = $conn->query("SELECT * FROM support_ticket WHERE Cust_Id = $cust_id ORDER BY Tcket_CreatedAt DESC");
-// Fetch orders for dropdown
-$orders = $conn->query("SELECT Order_Id, Order_PlacedAt FROM orders WHERE Cust_Id = $cust_id ORDER BY Order_PlacedAt DESC");
+$tickets = fb_filter_by_child($database, 'support_ticket', 'Cust_Id', $cust_id);
+usort($tickets, fn($a, $b) => strtotime($b['Tcket_CreatedAt'] ?? 0) - strtotime($a['Tcket_CreatedAt'] ?? 0));
+
+$orders = array_merge(
+    fb_filter_by_child($database, 'orders', 'Cust_Id', $cust_id)
+);
+usort($orders, fn($a, $b) => strtotime($b['Order_PlacedAt'] ?? 0) - strtotime($a['Order_PlacedAt'] ?? 0));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -42,23 +52,7 @@ $orders = $conn->query("SELECT Order_Id, Order_PlacedAt FROM orders WHERE Cust_I
     <title>Zalora Support Hub</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/global.css">
-    <style>
-        body { background: #f9f9f9; }
-        .support-container { max-width: 800px; margin: 50px auto; padding: 0 20px; }
-        .card { background: #fff; padding: 30px; border: 1px solid #eee; margin-bottom: 30px; }
-        .section-title { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 25px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
-        .form-group { margin-bottom: 20px; }
-        .form-group label { display: block; font-size: 11px; font-weight: 700; color: #999; margin-bottom: 8px; text-transform: uppercase; }
-        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 12px; border: 1px solid #ddd; font-family: inherit; font-size: 13px; box-sizing: border-box; }
-        .btn-submit { background: #000; color: #fff; border: none; padding: 15px 30px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer; }
-        
-        .ticket-item { padding: 20px; border: 1px solid #eee; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
-        .status-badge { padding: 4px 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; border-radius: 100px; }
-        .status-OPEN { background: #e0f2fe; color: #0369a1; }
-        .status-RESOLVED { background: #dcfce7; color: #15803d; }
-        
-        .nav-logo { font-size: 24px; font-weight: 700; text-align: center; display: block; margin: 30px 0; text-decoration: none; color: #000; letter-spacing: 0.2em; }
-    </style>
+    <link rel="stylesheet" href="../assets/css/support.css?v=<?= time() ?>">
 </head>
 <body>
 
@@ -69,7 +63,7 @@ $orders = $conn->query("SELECT Order_Id, Order_PlacedAt FROM orders WHERE Cust_I
     <p style="color: #666; margin-bottom: 30px;">How can we help you today?</p>
 
     <?php if ($msg): ?>
-        <div style="background: #e6fffa; color: #2c7a7b; padding: 15px; margin-bottom: 20px; font-size: 13px; border-left: 4px solid #38b2ac;"><?= $msg ?></div>
+        <div style="background: #e6fffa; color: #2c7a7b; padding: 15px; margin-bottom: 20px; font-size: 13px; border-left: 4px solid #38b2ac;"><?= htmlspecialchars($msg) ?></div>
     <?php endif; ?>
 
     <div class="card">
@@ -94,9 +88,12 @@ $orders = $conn->query("SELECT Order_Id, Order_PlacedAt FROM orders WHERE Cust_I
                     <label>Related Order (Optional)</label>
                     <select name="order_id">
                         <option value="">None</option>
-                        <?php while($o = $orders->fetch_assoc()): ?>
-                            <option value="<?= $o['Order_Id'] ?>">Order #<?= $o['Order_Id'] ?> (<?= date('M d, Y', strtotime($o['Order_PlacedAt'])) ?>)</option>
-                        <?php endwhile; ?>
+                        <?php foreach ($orders as $o): ?>
+                            <option value="<?= htmlspecialchars($o['Order_Id'] ?? '') ?>">
+                                Order #<?= htmlspecialchars($o['Order_Id'] ?? '') ?>
+                                (<?= date('M d, Y', strtotime($o['Order_PlacedAt'] ?? 'now')) ?>)
+                            </option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
             </div>
@@ -110,16 +107,21 @@ $orders = $conn->query("SELECT Order_Id, Order_PlacedAt FROM orders WHERE Cust_I
 
     <div class="card">
         <h2 class="section-title">Your Tickets</h2>
-        <?php if ($tickets->num_rows > 0): ?>
-            <?php while($t = $tickets->fetch_assoc()): ?>
+        <?php if (count($tickets) > 0): ?>
+            <?php foreach ($tickets as $t): ?>
                 <div class="ticket-item">
                     <div>
-                        <p style="font-weight: 700; font-size: 14px; margin-bottom: 5px;"><?= htmlspecialchars($t['Tcket_Subject']) ?></p>
-                        <p style="font-size: 11px; color: #999;">Ticket #<?= $t['Tcket_Id'] ?> • Opened on <?= date('M d, Y', strtotime($t['Tcket_CreatedAt'])) ?></p>
+                        <p style="font-weight: 700; font-size: 14px; margin-bottom: 5px;"><?= htmlspecialchars($t['Tcket_Subject'] ?? '') ?></p>
+                        <p style="font-size: 11px; color: #999;">
+                            Ticket #<?= htmlspecialchars($t['Tcket_Id'] ?? '') ?>
+                            • Opened on <?= date('M d, Y', strtotime($t['Tcket_CreatedAt'] ?? 'now')) ?>
+                        </p>
                     </div>
-                    <span class="status-badge status-<?= $t['Tcket_Status'] ?>"><?= $t['Tcket_Status'] ?></span>
+                    <span class="status-badge status-<?= htmlspecialchars($t['Tcket_Status'] ?? 'OPEN') ?>">
+                        <?= htmlspecialchars($t['Tcket_Status'] ?? 'OPEN') ?>
+                    </span>
                 </div>
-            <?php endwhile; ?>
+            <?php endforeach; ?>
         <?php else: ?>
             <p style="color: #999; font-size: 13px;">You have no active support tickets.</p>
         <?php endif; ?>

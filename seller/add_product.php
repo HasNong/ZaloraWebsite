@@ -11,9 +11,23 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'seller') {
 $seller_id = $_SESSION['user_id'];
 
 // Fetch Categories for dropdown
-$categories = $conn->query("SELECT Ctgry_Id, Ctgry_Name FROM CATEGORY WHERE Ctgry_IsActive = 1 ORDER BY Ctgry_Name");
+$categoriesRef = $database->getReference('category')->getSnapshot()->getValue() ?: [];
+$categories = [];
+foreach ($categoriesRef as $c) {
+    if (($c['Ctgry_IsActive'] ?? 0) == 1) {
+        $categories[] = $c;
+    }
+}
+usort($categories, function($a, $b) {
+    return strcmp($a['Ctgry_Name'] ?? '', $b['Ctgry_Name'] ?? '');
+});
+
 // Fetch Brands for dropdown
-$brands = $conn->query("SELECT Brand_Id, Brand_Name FROM BRAND ORDER BY Brand_Name");
+$brandsRef = $database->getReference('brand')->getSnapshot()->getValue() ?: [];
+$brands = array_values($brandsRef);
+usort($brands, function($a, $b) {
+    return strcmp($a['Brand_Name'] ?? '', $b['Brand_Name'] ?? '');
+});
 
 $msg = "";
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -21,105 +35,98 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $desc = $_POST['desc'] ?? '';
     $price = $_POST['price'] ?? 0;
     $ctgry_id = $_POST['category_id'] ?? 0;
-    $brand_id = !empty($_POST['brand_id']) ? intval($_POST['brand_id']) : 1; // Default to ID 1
+    $brand_id = !empty($_POST['brand_id']) ? $_POST['brand_id'] : 1; // Default
     $image_base64 = $_POST['prod_image_data'] ?? '';
     
     // Multi-variant handling
     $variants = $_POST['variants'] ?? [];
 
-    if ($name && $price > 0 && $ctgry_id > 0 && !empty($variants)) {
-        // Get next Prod_Id
-        $max_res = $conn->query("SELECT MAX(Prod_Id) as max_id FROM PRODUCT");
-        $prod_id = ($max_res->fetch_assoc()['max_id'] ?? 0) + 1;
-
-        // INSERT into PRODUCT (Price is 'd' for double/decimal) - Prod_IsActive set to 0 for admin approval
-        $stmt = $conn->prepare("INSERT INTO PRODUCT (Prod_Id, Sell_Id, Brand_Id, Ctgry_Id, Prod_Name, Prod_Desc, Prod_BasePrice, Prod_IsActive, Prod_CreatedAt, Prod_UpdatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW())");
-        $stmt->bind_param("iiiissd", $prod_id, $seller_id, $brand_id, $ctgry_id, $name, $desc, $price);
+    if ($name && $price > 0 && $ctgry_id && !empty($variants)) {
         
-        if ($stmt->execute()) {
-            // Handle Image Upload
-            if (!empty($image_base64)) {
-                $upload_dir = '../assets/uploads/products/';
-                if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
+        $newProductRef = $database->getReference('product')->push();
+        $prod_id = $newProductRef->getKey();
 
-                // Handle both "data:image/png;base64,..." and raw base64
-                if (strpos($image_base64, 'base64,') !== false) {
-                    $image_parts = explode("base64,", $image_base64);
-                    $image_base64_decoded = base64_decode($image_parts[1]);
-                    $image_type_aux = explode("image/", $image_parts[0]);
-                    $image_type = trim($image_type_aux[1] ?? 'png', '; ');
-                } else {
-                    $image_base64_decoded = base64_decode($image_base64);
-                    $image_type = 'png';
-                }
+        $productData = [
+            'Prod_Id' => $prod_id,
+            'Sell_Id' => $seller_id,
+            'Brand_Id' => $brand_id,
+            'Ctgry_Id' => $ctgry_id,
+            'Prod_Name' => $name,
+            'Prod_Desc' => $desc,
+            'Prod_BasePrice' => (float)$price,
+            'Prod_IsActive' => 0,
+            'Prod_CreatedAt' => date('Y-m-d H:i:s'),
+            'Prod_UpdatedAt' => date('Y-m-d H:i:s')
+        ];
+        
+        $newProductRef->set($productData);
+
+        // Handle Image Upload
+        if (!empty($image_base64)) {
+            $upload_dir = '../assets/uploads/products/';
+            if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
+
+            // Handle both "data:image/png;base64,..." and raw base64
+            if (strpos($image_base64, 'base64,') !== false) {
+                $image_parts = explode("base64,", $image_base64);
+                $image_base64_decoded = base64_decode($image_parts[1]);
+                $image_type_aux = explode("image/", $image_parts[0]);
+                $image_type = trim($image_type_aux[1] ?? 'png', '; ');
+            } else {
+                $image_base64_decoded = base64_decode($image_base64);
+                $image_type = 'png';
+            }
+            
+            if ($image_base64_decoded) {
+                $file_name = 'prod_' . substr(md5($prod_id), 0, 8) . '_' . time() . '.' . $image_type;
+                $file_path = $upload_dir . $file_name;
+                $db_save_path = 'assets/uploads/products/' . $file_name;
                 
-                if ($image_base64_decoded) {
-                    $file_name = 'prod_' . $prod_id . '_' . time() . '.' . $image_type;
-                    $file_path = $upload_dir . $file_name;
-                    $db_save_path = 'assets/uploads/products/' . $file_name;
-                    
-                    if (file_put_contents($file_path, $image_base64_decoded)) {
-                        $max_img = $conn->query("SELECT MAX(PImg_Id) as max_id FROM PRODUCT_IMAGE");
-                        $pimg_id = ($max_img->fetch_assoc()['max_id'] ?? 0) + 1;
-                        
-                        $img_stmt = $conn->prepare("INSERT INTO PRODUCT_IMAGE (PImg_Id, Prod_Id, PImg_ImgUrl, PImg_IsPrimary) VALUES (?, ?, ?, 1)");
-                        $img_stmt->bind_param("iis", $pimg_id, $prod_id, $db_save_path);
-                        $img_stmt->execute();
-                    }
+                if (file_put_contents($file_path, $image_base64_decoded)) {
+                    $newImgRef = $database->getReference('product_image')->push();
+                    $newImgRef->set([
+                        'PImg_Id' => $newImgRef->getKey(),
+                        'Prod_Id' => $prod_id,
+                        'PImg_ImgUrl' => $db_save_path,
+                        'PImg_IsPrimary' => 1
+                    ]);
                 }
             }
-
-            // LOOP THROUGH VARIANTS and save each one
-            foreach ($variants as $v) {
-                $v_size = $v['size'] ?? 'M';
-                $v_color = $v['color'] ?? 'Default';
-                $v_stock = intval($v['stock'] ?? 0);
-
-                $max_var = $conn->query("SELECT MAX(PVar_Id) as max_id FROM product_variant");
-                $pvar_id = ($max_var->fetch_assoc()['max_id'] ?? 0) + 1;
-                
-                $sku = "SKU-" . $prod_id . "-" . strtoupper(substr($v_color, 0, 3)) . "-" . strtoupper($v_size);
-                $var_stmt = $conn->prepare("INSERT INTO product_variant (PVar_Id, Prod_Id, PVar_Sku, PVar_Size, PVar_Color, PVar_StockQuantity) VALUES (?, ?, ?, ?, ?, ?)");
-                $var_stmt->bind_param("iisssi", $pvar_id, $prod_id, $sku, $v_size, $v_color, $v_stock);
-                $var_stmt->execute();
-            }
-
-            // Handle Product Tags
-            $tags_raw = $_POST['tags'] ?? '';
-            if (!empty($tags_raw)) {
-                $tags_array = explode(',', $tags_raw);
-                foreach ($tags_array as $t_name) {
-                    $t_name = trim($t_name);
-                    if (empty($t_name)) continue;
-                    
-                    // Check if tag exists
-                    $t_stmt = $conn->prepare("SELECT Tag_Id FROM product_tag WHERE Tag_Name = ?");
-                    $t_stmt->bind_param("s", $t_name);
-                    $t_stmt->execute();
-                    $t_res = $t_stmt->get_result();
-                    
-                    if ($t_res->num_rows > 0) {
-                        $tag_id = $t_res->fetch_assoc()['Tag_Id'];
-                    } else {
-                        $max_t = $conn->query("SELECT MAX(Tag_Id) as max_id FROM product_tag");
-                        $tag_id = ($max_t->fetch_assoc()['max_id'] ?? 0) + 1;
-                        $ins_t = $conn->prepare("INSERT INTO product_tag (Tag_Id, Tag_Name) VALUES (?, ?)");
-                        $ins_t->bind_param("is", $tag_id, $t_name);
-                        $ins_t->execute();
-                    }
-                    
-                    // Map tag to product
-                    $conn->query("INSERT INTO product_tag_map (Prod_Id, Tag_Id) VALUES ($prod_id, $tag_id)");
-                }
-            }
-
-            // Success Redirect
-            $_SESSION['success_msg'] = "Product '$name' has been successfully submitted and is pending admin approval!";
-            header("Location: inventory.php");
-            exit;
-        } else {
-            $msg = "Database Error: " . $stmt->error;
         }
+
+        // LOOP THROUGH VARIANTS and save each one
+        foreach ($variants as $v) {
+            $v_size = $v['size'] ?? 'M';
+            $v_color = $v['color'] ?? 'Default';
+            $v_stock = intval($v['stock'] ?? 0);
+
+            $sku = "SKU-" . substr(md5($prod_id), 0, 6) . "-" . strtoupper(substr($v_color, 0, 3)) . "-" . strtoupper($v_size);
+            
+            $newVarRef = $database->getReference('product_variant')->push();
+            $newVarRef->set([
+                'PVar_Id' => $newVarRef->getKey(),
+                'Prod_Id' => $prod_id,
+                'PVar_Sku' => $sku,
+                'PVar_Size' => $v_size,
+                'PVar_Color' => $v_color,
+                'PVar_StockQuantity' => $v_stock
+            ]);
+        }
+
+        // Handle Product Tags - Store as array in product node
+        $tags_raw = $_POST['tags'] ?? '';
+        if (!empty($tags_raw)) {
+            $tags_array = array_map('trim', explode(',', $tags_raw));
+            $tags_array = array_filter($tags_array); // remove empty
+            if (!empty($tags_array)) {
+                $newProductRef->update(['Tags' => array_values($tags_array)]);
+            }
+        }
+
+        // Success Redirect
+        $_SESSION['success_msg'] = "Product '$name' has been successfully submitted and is pending admin approval!";
+        header("Location: inventory.php");
+        exit;
     } else {
         $msg = "Please ensure all required fields (*) are filled correctly.";
     }
@@ -133,67 +140,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Seller Center - Add Product</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/seller.css">
-    <style>
-        .form-card { 
-            background: var(--white); 
-            padding: 2.5rem; 
-            border: 1px solid var(--border); 
-            max-width: 900px; 
-            border-radius: var(--radius-md);
-            box-shadow: var(--shadow-sm);
-            transition: var(--transition);
-        }
-        .form-card:hover {
-            box-shadow: var(--shadow-md);
-        }
-        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem; }
-        .form-group { margin-bottom: 1.5rem; }
-        .form-group label { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; color: var(--text-light); margin-bottom: 8px; text-transform: uppercase; }
-        .form-group input, .form-group select, .form-group textarea { 
-            width: 100%; 
-            padding: 12px; 
-            border: 1px solid var(--border); 
-            font-family: inherit; 
-            font-size: 13px; 
-            outline: none; 
-            transition: var(--transition); 
-            box-sizing: border-box;
-            border-radius: var(--radius-sm);
-        }
-        .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--black); }
-        
-        /* Dropzone */
-        .upload-zone {
-            width: 100%;
-            height: 200px;
-            border: 2px dashed var(--border);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: var(--transition);
-            position: relative;
-            overflow: hidden;
-            background: var(--background);
-            border-radius: var(--radius-sm);
-        }
-        .upload-zone:hover { border-color: var(--black); background: rgba(0,0,0,0.02); }
-        .upload-zone.has-image { border-style: solid; border-color: var(--border); }
-        .upload-zone img { width: 100%; height: 100%; object-fit: contain; }
-        .upload-zone p { font-size: 11px; font-weight: 700; color: var(--text-light); margin-top: 10px; }
-        
-        .alert { 
-            padding: 15px; 
-            margin-bottom: 2rem; 
-            font-size: 12px; 
-            font-weight: 600; 
-            border-radius: var(--radius-sm);
-            background: var(--accent-red-bg); 
-            color: var(--accent-red-text);
-            border: 1px solid rgba(0,0,0,0.02); 
-        }
-    </style>
+    <link rel="stylesheet" href="../assets/css/seller-product-form.css?v=<?= time() ?>">
 </head>
 <body>
 
@@ -245,18 +192,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <label>Category *</label>
                         <select name="category_id" required>
                             <option value="">Select Category</option>
-                            <?php while($c = $categories->fetch_assoc()): ?>
+                            <?php foreach($categories as $c): ?>
                                 <option value="<?= $c['Ctgry_Id'] ?>"><?= htmlspecialchars($c['Ctgry_Name']) ?></option>
-                            <?php endwhile; ?>
+                            <?php endforeach; ?>
                         </select>
                     </div>
                     <div class="form-group">
                         <label>Brand</label>
                         <select name="brand_id">
                             <option value="">Select Brand</option>
-                            <?php while($b = $brands->fetch_assoc()): ?>
+                            <?php foreach($brands as $b): ?>
                                 <option value="<?= $b['Brand_Id'] ?>"><?= htmlspecialchars($b['Brand_Name']) ?></option>
-                            <?php endwhile; ?>
+                            <?php endforeach; ?>
                         </select>
                     </div>
                 </div>

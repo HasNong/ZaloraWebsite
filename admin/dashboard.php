@@ -6,46 +6,71 @@ if (!isset($_SESSION['admin_logged_in'])) {
 }
 require_once '../config/db.php';
 
-// Stats
-$total_customers = $conn->query("SELECT COUNT(*) as count FROM CUSTOMER")->fetch_assoc()['count'];
-$total_sellers = $conn->query("SELECT COUNT(*) as count FROM SELLER")->fetch_assoc()['count'];
-$total_products = $conn->query("SELECT COUNT(*) as count FROM PRODUCT")->fetch_assoc()['count'];
-$total_orders = $conn->query("SELECT COUNT(*) as count FROM ORDERS")->fetch_assoc()['count'];
-$total_revenue = $conn->query("SELECT SUM(Order_TotalAmnt) as total FROM ORDERS WHERE Order_Status != 'CANCELLED'")->fetch_assoc()['total'] ?? 0;
+// Stats — count active records
+$all_customers = $database->getReference('customer')->getSnapshot()->getValue() ?: [];
+$total_customers = count(array_filter($all_customers, fn($c) => ($c['Cust_IsActive'] ?? 1) == 1));
 
-// Recent Orders
-$recent_orders = $conn->query("SELECT o.*, c.Cust_Firstname, c.Cust_Lastname 
-                              FROM ORDERS o 
-                              JOIN CUSTOMER c ON o.Cust_Id = c.Cust_Id 
-                              ORDER BY o.Order_PlacedAt DESC LIMIT 5");
+$all_sellers = $database->getReference('seller')->getSnapshot()->getValue() ?: [];
+$total_sellers = count(array_filter($all_sellers, fn($s) => ($s['Sell_IsActive'] ?? 1) == 1));
+
+$all_products = $database->getReference('product')->getSnapshot()->getValue() ?: [];
+$total_products = count(array_filter($all_products, fn($p) => ($p['Prod_IsDeleted'] ?? 0) == 0));
+
+$all_orders = $database->getReference('orders')->getSnapshot()->getValue() ?: [];
+$total_orders = count($all_orders);
+
+$total_revenue = array_sum(array_map(
+    fn($o) => ($o['Order_Status'] ?? '') !== 'CANCELLED' ? floatval($o['Order_TotalAmnt'] ?? 0) : 0,
+    $all_orders
+));
+
+// Recent Orders (last 5, sorted by date)
+usort($all_orders, fn($a, $b) => strtotime($b['Order_PlacedAt'] ?? 0) - strtotime($a['Order_PlacedAt'] ?? 0));
+$recent_orders_raw = array_slice($all_orders, 0, 5);
+$recent_orders = [];
+foreach ($recent_orders_raw as $o) {
+    $cust_id = $o['Cust_Id'] ?? null;
+    $cust = null;
+    if ($cust_id) {
+        foreach ($all_customers as $c) {
+            if (($c['Cust_Id'] ?? null) == $cust_id) { $cust = $c; break; }
+        }
+    }
+    $recent_orders[] = array_merge($o, [
+        'Cust_Firstname' => $cust['Cust_Firstname'] ?? 'Unknown',
+        'Cust_Lastname'  => $cust['Cust_Lastname'] ?? ''
+    ]);
+}
 
 // Daily Sales (Last 7 Days)
-$sales_query = "SELECT DATE(Order_PlacedAt) as date, SUM(Order_TotalAmnt) as total 
-                FROM ORDERS 
-                WHERE Order_PlacedAt >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-                AND Order_Status != 'CANCELLED'
-                GROUP BY DATE(Order_PlacedAt)
-                ORDER BY date ASC";
-$sales_res = $conn->query($sales_query);
-$sales_data = [];
-$sales_labels = [];
-while($s = $sales_res->fetch_assoc()) {
-    $sales_labels[] = date('M d', strtotime($s['date']));
-    $sales_data[] = $s['total'];
+$sales_map = [];
+$seven_days_ago = strtotime('-7 days');
+foreach ($all_orders as $o) {
+    if (($o['Order_Status'] ?? '') === 'CANCELLED') continue;
+    $ts = strtotime($o['Order_PlacedAt'] ?? 0);
+    if ($ts >= $seven_days_ago) {
+        $day = date('M d', $ts);
+        $sales_map[$day] = ($sales_map[$day] ?? 0) + floatval($o['Order_TotalAmnt'] ?? 0);
+    }
 }
+ksort($sales_map);
+$sales_labels = array_keys($sales_map);
+$sales_data   = array_values($sales_map);
 
 // Category Distribution
-$cat_query = "SELECT c.Ctgry_Name, COUNT(p.Prod_Id) as count 
-              FROM CATEGORY c 
-              JOIN PRODUCT p ON c.Ctgry_Id = p.Ctgry_Id 
-              GROUP BY c.Ctgry_Id";
-$cat_res = $conn->query($cat_query);
-$cat_data = [];
-$cat_labels = [];
-while($c = $cat_res->fetch_assoc()) {
-    $cat_labels[] = $c['Ctgry_Name'];
-    $cat_data[] = $c['count'];
+$all_categories = $database->getReference('category')->getSnapshot()->getValue() ?: [];
+$cat_map = [];
+foreach ($all_products as $p) {
+    $ctgry_id = $p['Ctgry_Id'] ?? null;
+    if (!$ctgry_id) continue;
+    $cat_name = 'Unknown';
+    foreach ($all_categories as $cat) {
+        if (($cat['Ctgry_Id'] ?? null) == $ctgry_id) { $cat_name = $cat['Ctgry_Name']; break; }
+    }
+    $cat_map[$cat_name] = ($cat_map[$cat_name] ?? 0) + 1;
 }
+$cat_labels = array_keys($cat_map);
+$cat_data   = array_values($cat_map);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -115,8 +140,8 @@ while($c = $cat_res->fetch_assoc()) {
                 </tr>
             </thead>
             <tbody>
-                <?php if ($recent_orders->num_rows > 0): ?>
-                    <?php while($row = $recent_orders->fetch_assoc()): ?>
+                <?php if (count($recent_orders) > 0): ?>
+                    <?php foreach($recent_orders as $row): ?>
                     <tr style="border-bottom: 1px solid #fafafa;">
                         <td style="padding: 1rem; font-weight: 600;">#<?= $row['Order_Id'] ?></td>
                         <td style="padding: 1rem;"><?= htmlspecialchars($row['Cust_Firstname'] . ' ' . $row['Cust_Lastname']) ?></td>
@@ -131,7 +156,7 @@ while($c = $cat_res->fetch_assoc()) {
                             <a href="orders.php?id=<?= $row['Order_Id'] ?>" style="color: #000; text-decoration: underline; font-size: 12px; font-weight: 600;">Manage</a>
                         </td>
                     </tr>
-                    <?php endwhile; ?>
+                    <?php endforeach; ?>
                 <?php else: ?>
                     <tr>
                         <td colspan="6" style="padding: 2rem; text-align: center; color: #999; font-style: italic;">No orders found yet.</td>

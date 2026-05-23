@@ -7,55 +7,69 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-$order_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+$order_id = $_GET['id'] ?? null;
 $cust_id = $_SESSION['user_id'];
 
-// Verify order exists and belongs to customer and is DELIVERED
-$check = $conn->prepare("SELECT o.Order_Status, s.Ship_DeliveredAt 
-                         FROM ORDERS o 
-                         LEFT JOIN shipment s ON o.Order_Id = s.Order_Id
-                         WHERE o.Order_Id = ? AND o.Cust_Id = ?");
-$check->bind_param("ii", $order_id, $cust_id);
-$check->execute();
-$order = $check->get_result()->fetch_assoc();
+if (!$order_id) {
+    die("Invalid request.");
+}
 
-if (!$order || strtoupper($order['Order_Status']) !== 'DELIVERED') {
+// Verify order exists and belongs to customer and is DELIVERED
+$ordersRef = $database->getReference('orders')->orderByChild('Order_Id')->equalTo($order_id)->getSnapshot()->getValue();
+$order = $ordersRef ? current($ordersRef) : null;
+
+if (!$order || ($order['Cust_Id'] ?? 0) != $cust_id || strtoupper($order['Order_Status'] ?? '') !== 'DELIVERED') {
     die("Invalid request or order not eligible for return.");
 }
 
+// Fetch Order Items for this order to attach return to the first item (legacy logic emulation)
+$orderItemsRef = $database->getReference('order_item')->orderByChild('Order_Id')->equalTo($order_id)->getSnapshot()->getValue();
+$first_item_id = null;
+if ($orderItemsRef) {
+    $first_item = current($orderItemsRef);
+    $first_item_id = $first_item['OdItm_Id'] ?? null;
+}
+
 // Check for existing return
-$ret_check = $conn->query("SELECT Rtrn_Id FROM return_request rr JOIN ORDER_ITEM oi ON rr.OdItm_Id = oi.OdItm_Id WHERE oi.Order_Id = $order_id");
-if ($ret_check->num_rows > 0) {
-    header("Location: order_details.php?id=$order_id");
-    exit;
+if ($first_item_id) {
+    $returnsRef = $database->getReference('return_request')->orderByChild('OdItm_Id')->equalTo($first_item_id)->getSnapshot()->getValue();
+    if ($returnsRef) {
+        header("Location: order_details.php?id=$order_id");
+        exit;
+    }
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_return'])) {
-    $reason = $conn->real_escape_string($_POST['reason']);
+    $reason = trim($_POST['reason'] ?? '');
     $evidence_url = NULL;
 
     // Handle File Upload
     if (isset($_FILES['evidence']) && $_FILES['evidence']['error'] === UPLOAD_ERR_OK) {
         $ext = pathinfo($_FILES['evidence']['name'], PATHINFO_EXTENSION);
-        $filename = "return_" . $order_id . "_" . time() . "." . $ext;
+        $filename = "return_" . substr(md5($order_id), 0, 8) . "_" . time() . "." . $ext;
         $target_dir = "../assets/images/returns/";
         
+        if (!is_dir($target_dir)) mkdir($target_dir, 0777, true);
+
         if (move_uploaded_file($_FILES['evidence']['tmp_name'], $target_dir . $filename)) {
             $evidence_url = "assets/images/returns/" . $filename;
         }
     }
 
-    // Get next ID
-    $res_rid = $conn->query("SELECT MAX(Rtrn_Id) as max_id FROM return_request");
-    $next_rid = ($res_rid->fetch_assoc()['max_id'] ?? 0) + 1;
-
-    $stmt = $conn->prepare("INSERT INTO return_request (Rtrn_Id, OdItm_Id, Cust_Id, Rtrn_Reason, Rtrn_PicEvidence, Rtrn_Type, Rtrn_Status, Rtrn_CreatedAt) VALUES (?, (SELECT OdItm_Id FROM ORDER_ITEM WHERE Order_Id = ? LIMIT 1), ?, ?, ?, 'RETURN', 'PENDING', NOW())");
-    $stmt->bind_param("iiiss", $next_rid, $order_id, $cust_id, $reason, $evidence_url);
+    $newRet = $database->getReference('return_request')->push();
+    $newRet->set([
+        'Rtrn_Id' => $newRet->getKey(),
+        'OdItm_Id' => $first_item_id,
+        'Cust_Id' => $cust_id,
+        'Rtrn_Reason' => $reason,
+        'Rtrn_PicEvidence' => $evidence_url,
+        'Rtrn_Type' => 'RETURN',
+        'Rtrn_Status' => 'PENDING',
+        'Rtrn_CreatedAt' => date('Y-m-d H:i:s')
+    ]);
     
-    if ($stmt->execute()) {
-        header("Location: order_details.php?id=$order_id&return=submitted");
-        exit;
-    }
+    header("Location: order_details.php?id=$order_id&return=submitted");
+    exit;
 }
 ?>
 <!DOCTYPE html>
@@ -65,18 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_return'])) {
     <title>ZALORA — Request Return #<?= $order_id ?></title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
     <link rel="stylesheet" href="../assets/css/global.css"/>
-    <style>
-        body { background: #f9f9f9; font-family: 'Montserrat', sans-serif; }
-        .container { max-width: 600px; margin: 60px auto; padding: 0 20px; }
-        .card { background: #fff; border: 1px solid #eee; padding: 40px; }
-        .title { font-size: 20px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 30px; text-align: center; }
-        .form-group { margin-bottom: 25px; }
-        .form-group label { display: block; font-size: 10px; font-weight: 800; color: #999; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px; }
-        .form-group textarea, .form-group input { width: 100%; padding: 15px; border: 1px solid #eee; font-family: inherit; font-size: 14px; box-sizing: border-box; }
-        .btn-submit { width: 100%; background: #000; color: #fff; border: none; padding: 20px; font-weight: 700; text-transform: uppercase; cursor: pointer; letter-spacing: 0.1em; }
-        .nav-logo { font-size: 24px; font-weight: 700; text-align: center; display: block; margin: 30px 0; text-decoration: none; color: #000; letter-spacing: 0.2em; }
-        .policy-note { font-size: 12px; color: #666; line-height: 1.6; margin-top: 30px; padding: 20px; background: #fafafa; border: 1px dashed #eee; }
-    </style>
+    <link rel="stylesheet" href="../assets/css/request-return.css?v=<?= time() ?>">
 </head>
 <body>
 

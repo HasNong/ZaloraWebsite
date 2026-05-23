@@ -10,29 +10,58 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
 
 // Handle Status Updates
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    $rtrn_id = intval($_POST['rtrn_id']);
+    $rtrn_id = $_POST['rtrn_id'];
     $action = $_POST['action'];
     $status = ($action === 'approve') ? 'APPROVED' : 'REJECTED';
-    
-    $stmt = $conn->prepare("UPDATE return_request SET Rtrn_Status = ? WHERE Rtrn_Id = ?");
-    $stmt->bind_param("si", $status, $rtrn_id);
-    if ($stmt->execute()) {
+
+    $rtrnRef = $database->getReference('return_request')->orderByChild('Rtrn_Id')->equalTo(intval($rtrn_id))->getSnapshot()->getValue();
+    if ($rtrnRef) {
+        $key = key($rtrnRef);
+        $database->getReference('return_request')->getChild($key)->update(['Rtrn_Status' => $status]);
         $_SESSION['success'] = "Return request $status successfully.";
     }
     header("Location: returns.php");
     exit;
 }
 
-// Fetch Returns
-$query = "SELECT rr.*, c.Cust_FirstName, c.Cust_LastName, p.Prod_Name, p.Prod_Id,
-                 oi.OdItm_Quantity, oi.OdItm_Subtotal
-          FROM return_request rr
-          JOIN customer c ON rr.Cust_Id = c.Cust_Id
-          JOIN ORDER_ITEM oi ON rr.OdItm_Id = oi.OdItm_Id
-          JOIN PRODUCT_VARIANT pv ON oi.PVar_Id = pv.PVar_Id
-          JOIN PRODUCT p ON pv.Prod_Id = p.Prod_Id
-          ORDER BY rr.Rtrn_CreatedAt DESC";
-$returns = $conn->query($query);
+// Fetch Returns with in-memory joins
+$returnsRaw = $database->getReference('return_request')->getSnapshot()->getValue() ?: [];
+$all_customers = array_merge(
+    $database->getReference('customer')->getSnapshot()->getValue() ?: [],
+    $database->getReference('customer')->getSnapshot()->getValue() ?: []
+);
+$all_order_items = array_merge(
+    $database->getReference('order_item')->getSnapshot()->getValue() ?: [],
+    $database->getReference('order_item')->getSnapshot()->getValue() ?: []
+);
+$all_pvariants = $database->getReference('product_variant')->getSnapshot()->getValue() ?: [];
+$all_products  = $database->getReference('product')->getSnapshot()->getValue() ?: [];
+
+// Build lookup maps
+$cust_map = [];
+foreach ($all_customers as $c) { if (isset($c['Cust_Id'])) $cust_map[$c['Cust_Id']] = $c; }
+$oi_map = [];
+foreach ($all_order_items as $oi) { if (isset($oi['OdItm_Id'])) $oi_map[$oi['OdItm_Id']] = $oi; }
+$pvar_map = [];
+foreach ($all_pvariants as $pv) { if (isset($pv['PVar_Id'])) $pvar_map[$pv['PVar_Id']] = $pv; }
+$prod_map = [];
+foreach ($all_products as $p) { if (isset($p['Prod_Id'])) $prod_map[$p['Prod_Id']] = $p; }
+
+$returns = [];
+foreach ($returnsRaw as $rr) {
+    $cust = $cust_map[$rr['Cust_Id'] ?? ''] ?? [];
+    $oi   = $oi_map[$rr['OdItm_Id'] ?? ''] ?? [];
+    $pvar = $pvar_map[$oi['PVar_Id'] ?? ''] ?? [];
+    $prod = $prod_map[$pvar['Prod_Id'] ?? ''] ?? [];
+    $returns[] = array_merge($rr, [
+        'Cust_FirstName'  => $cust['Cust_Firstname'] ?? 'Unknown',
+        'Cust_LastName'   => $cust['Cust_Lastname'] ?? '',
+        'Prod_Name'       => $prod['Prod_Name'] ?? 'Unknown Product',
+        'OdItm_Quantity'  => $oi['OdItm_Quantity'] ?? 0,
+        'OdItm_Subtotal'  => $oi['OdItm_Subtotal'] ?? 0
+    ]);
+}
+usort($returns, fn($a, $b) => strtotime($b['Rtrn_CreatedAt'] ?? 0) - strtotime($a['Rtrn_CreatedAt'] ?? 0));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -41,21 +70,7 @@ $returns = $conn->query($query);
     <title>Admin - Return Management</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/admin.css">
-    <style>
-        .returns-container { padding: 40px; }
-        .page-title { font-size: 24px; font-weight: 700; text-transform: uppercase; margin-bottom: 30px; letter-spacing: 0.05em; }
-        .return-table { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
-        .return-table th { background: #000; color: #fff; text-transform: uppercase; font-size: 10px; letter-spacing: 0.1em; padding: 20px; text-align: left; }
-        .return-table td { padding: 20px; border-bottom: 1px solid #eee; font-size: 13px; vertical-align: top; }
-        .status-badge { padding: 5px 10px; font-size: 10px; font-weight: 700; border-radius: 3px; text-transform: uppercase; }
-        .status-pending { background: #fff4e5; color: #b7791f; }
-        .status-approved { background: #e6fffa; color: #2c7a7b; }
-        .status-rejected { background: #fff5f5; color: #c53030; }
-        .btn-action { padding: 8px 15px; font-size: 10px; font-weight: 700; border: none; cursor: pointer; text-transform: uppercase; }
-        .btn-approve { background: #000; color: #fff; }
-        .btn-reject { background: #fff; color: #000; border: 1px solid #000; }
-        .evidence-img { width: 80px; height: 80px; object-fit: cover; border: 1px solid #eee; cursor: pointer; }
-    </style>
+    <link rel="stylesheet" href="../assets/css/admin-returns.css?v=<?= time() ?>">
 </head>
 <body class="admin-body">
     <div class="admin-layout">
@@ -84,7 +99,7 @@ $returns = $conn->query($query);
                         </tr>
                     </thead>
                     <tbody>
-                        <?php while($r = $returns->fetch_assoc()): ?>
+                        <?php foreach($returns as $r): ?>
                         <tr>
                             <td>#<?= $r['Rtrn_Id'] ?></td>
                             <td><?= htmlspecialchars($r['Cust_FirstName'] . ' ' . $r['Cust_LastName']) ?></td>
@@ -94,7 +109,7 @@ $returns = $conn->query($query);
                             </td>
                             <td style="max-width: 200px;"><?= htmlspecialchars($r['Rtrn_Reason']) ?></td>
                             <td>
-                                <?php if ($r['Rtrn_PicEvidence']): ?>
+                                <?php if (!empty($r['Rtrn_PicEvidence'])): ?>
                                     <img src="../<?= htmlspecialchars($r['Rtrn_PicEvidence']) ?>" class="evidence-img" onclick="window.open(this.src)">
                                 <?php else: ?>
                                     <span style="color: #999; font-style: italic;">No Photo</span>
@@ -113,7 +128,7 @@ $returns = $conn->query($query);
                                 <?php endif; ?>
                             </td>
                         </tr>
-                        <?php endwhile; ?>
+                        <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>

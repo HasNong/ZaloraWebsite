@@ -3,48 +3,67 @@
  * Global Helper Functions for Zalora Ecosystem
  */
 
-function add_notification($conn, $cust_id, $type, $title, $message, $channel = 'PUSH') {
-    $res = $conn->query("SELECT MAX(Notif_Id) as max_id FROM notification");
-    $id = ($res->fetch_assoc()['max_id'] ?? 0) + 1;
-    $stmt = $conn->prepare("INSERT INTO notification (Notif_Id, Cust_Id, Notif_Type, Notif_Title, Notif_Message, Notif_Channel, Notif_SentAt) VALUES (?, ?, ?, ?, ?, ?, NOW())");
-    $stmt->bind_param("iissss", $id, $cust_id, $type, $title, $message, $channel);
-    return $stmt->execute();
+function add_notification($database, $cust_id, $type, $title, $message, $channel = 'PUSH') {
+    $newNotif = $database->getReference('notification')->push();
+    return $newNotif->set([
+        'Notif_Id' => $newNotif->getKey(),
+        'Cust_Id' => $cust_id,
+        'Notif_Type' => $type,
+        'Notif_Title' => $title,
+        'Notif_Message' => $message,
+        'Notif_Channel' => $channel,
+        'Notif_SentAt' => date('Y-m-d H:i:s')
+    ]);
 }
 
-function award_points($conn, $cust_id, $order_id, $points) {
+function award_points($database, $cust_id, $order_id, $points) {
     // Get current balance from last transaction
-    $stmt_bal = $conn->prepare("SELECT Loyal_Balance_after FROM loyalty_points WHERE Cust_Id = ? ORDER BY Loyal_CreatedAt DESC LIMIT 1");
-    $stmt_bal->bind_param("i", $cust_id);
-    $stmt_bal->execute();
-    $res_bal = $stmt_bal->get_result()->fetch_assoc();
-    $current = $res_bal['Loyal_Balance_after'] ?? 0;
+    $loyaltyRef = $database->getReference('loyalty_points')->orderByChild('Cust_Id')->equalTo($cust_id)->getSnapshot()->getValue();
+    $current = 0;
+    if ($loyaltyRef) {
+        // Sort by date descending
+        usort($loyaltyRef, function($a, $b) {
+            return strtotime($b['Loyal_CreatedAt'] ?? 0) - strtotime($a['Loyal_CreatedAt'] ?? 0);
+        });
+        $current = $loyaltyRef[0]['Loyal_Balance_after'] ?? 0;
+    }
     
     $new_bal = $current + $points;
     
-    $res_id = $conn->query("SELECT MAX(Loyal_Id) as max_id FROM loyalty_points");
-    $id = ($res_id->fetch_assoc()['max_id'] ?? 0) + 1;
-    
-    $stmt = $conn->prepare("INSERT INTO loyalty_points (Loyal_Id, Cust_Id, Order_Id, Loyal_TransType, Loyal_Points, Loyal_Balance_after, Loyal_CreatedAt) VALUES (?, ?, ?, 'EARNED', ?, ?, NOW())");
-    $stmt->bind_param("iiidd", $id, $cust_id, $order_id, $points, $new_bal);
-    return $stmt->execute();
+    $newRecord = $database->getReference('loyalty_points')->push();
+    return $newRecord->set([
+        'Loyal_Id' => $newRecord->getKey(),
+        'Cust_Id' => $cust_id,
+        'Order_Id' => $order_id,
+        'Loyal_TransType' => 'EARNED',
+        'Loyal_Points' => $points,
+        'Loyal_Balance_after' => $new_bal,
+        'Loyal_CreatedAt' => date('Y-m-d H:i:s')
+    ]);
 }
 
-function deduct_points($conn, $cust_id, $points) {
-    $stmt_bal = $conn->prepare("SELECT Loyal_Balance_after FROM loyalty_points WHERE Cust_Id = ? ORDER BY Loyal_CreatedAt DESC LIMIT 1");
-    $stmt_bal->bind_param("i", $cust_id);
-    $stmt_bal->execute();
-    $res_bal = $stmt_bal->get_result()->fetch_assoc();
-    $current = $res_bal['Loyal_Balance_after'] ?? 0;
+function deduct_points($database, $cust_id, $points) {
+    $loyaltyRef = $database->getReference('loyalty_points')->orderByChild('Cust_Id')->equalTo($cust_id)->getSnapshot()->getValue();
+    $current = 0;
+    if ($loyaltyRef) {
+        usort($loyaltyRef, function($a, $b) {
+            return strtotime($b['Loyal_CreatedAt'] ?? 0) - strtotime($a['Loyal_CreatedAt'] ?? 0);
+        });
+        $current = $loyaltyRef[0]['Loyal_Balance_after'] ?? 0;
+    }
     
     if ($current < $points) return false;
     
     $new_bal = $current - $points;
     
-    $res_id = $conn->query("SELECT MAX(Loyal_Id) as max_id FROM loyalty_points");
-    $id = ($res_id->fetch_assoc()['max_id'] ?? 0) + 1;
-    
-    $stmt = $conn->prepare("INSERT INTO loyalty_points (Loyal_Id, Cust_Id, Loyal_TransType, Loyal_Points, Loyal_Balance_after, Loyal_CreatedAt) VALUES (?, ?, 'REDEEMED', ?, ?, NOW())");
-    $stmt->bind_param("iidd", $id, $cust_id, $points, $new_bal);
-    return $stmt->execute();
+    $newRecord = $database->getReference('loyalty_points')->push();
+    return $newRecord->set([
+        'Loyal_Id' => $newRecord->getKey(),
+        'Cust_Id' => $cust_id,
+        'Loyal_TransType' => 'REDEEMED',
+        'Loyal_Points' => $points,
+        'Loyal_Balance_after' => $new_bal,
+        'Loyal_CreatedAt' => date('Y-m-d H:i:s')
+    ]);
 }
 ?>

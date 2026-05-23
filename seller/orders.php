@@ -8,72 +8,212 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $seller_id = $_SESSION['user_id'];
-$status_filter = strtoupper(isset($_GET['status']) ? $_GET['status'] : 'CONFIRMED');
+$status_filter = strtoupper($_GET['status'] ?? 'PENDING');
 
-// 1. Get counts for tabs
-$counts = ['PENDING' => 0, 'CONFIRMED' => 0, 'SHIPPED' => 0, 'DELIVERED' => 0, 'RETURNED' => 0, 'CANCELED' => 0];
-$count_query = "SELECT o.Order_Status, COUNT(*) as cnt 
-                FROM ORDERS o 
-                JOIN ORDER_ITEM oi ON o.Order_Id = oi.Order_Id
-                JOIN PRODUCT_VARIANT pv ON oi.PVar_Id = pv.PVar_Id
-                JOIN PRODUCT p ON pv.Prod_Id = p.Prod_Id
-                WHERE p.Sell_Id = ? 
-                GROUP BY o.Order_Status";
-$stmt_count = $conn->prepare($count_query);
-$stmt_count->bind_param("i", $seller_id);
-$stmt_count->execute();
-$count_res = $stmt_count->get_result();
-while($row = $count_res->fetch_assoc()) {
-    $s = strtoupper($row['Order_Status']);
-    if (isset($counts[$s])) $counts[$s] = $row['cnt'];
+function seller_owns_order($order_id, $variantToProductMap, $orderItemsRef) {
+    foreach ($orderItemsRef as $oi) {
+        if (!is_array($oi)) continue;
+        if (($oi['Order_Id'] ?? '') == $order_id && isset($variantToProductMap[$oi['PVar_Id'] ?? ''])) {
+            return true;
+        }
+    }
+    return false;
 }
 
-// 2. Fetch Filtered Orders
-$query = "SELECT o.Order_Id, o.Order_PlacedAt, o.Order_Status, c.Cust_FirstName, c.Cust_LastName,
-                 oi.OdItm_Quantity, oi.OdItm_Subtotal, pv.PVar_Size, pv.PVar_Color,
-                 p.Prod_Name, (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id AND PImg_IsPrimary = 1 LIMIT 1) as img,
-                 s.Ship_ProofImg
-          FROM ORDERS o
-          JOIN CUSTOMER c ON o.Cust_Id = c.Cust_Id
-          JOIN ORDER_ITEM oi ON o.Order_Id = oi.Order_Id
-          JOIN PRODUCT_VARIANT pv ON oi.PVar_Id = pv.PVar_Id
-          JOIN PRODUCT p ON pv.Prod_Id = p.Prod_Id
-          LEFT JOIN shipment s ON o.Order_Id = s.Order_Id
-          WHERE p.Sell_Id = ? AND UPPER(o.Order_Status) = ?
-          ORDER BY o.Order_PlacedAt DESC";
+function update_order_status($database, $order_id, $status) {
+    $found = fb_find_record($database, 'orders', 'Order_Id', $order_id);
+    if ($found) {
+        $database->getReference('orders')->getChild($found['key'])->update([
+            'Order_Status' => $status,
+            'Order_UpdatedAt' => date('Y-m-d H:i:s'),
+        ]);
+        return true;
+    }
+    return false;
+}
 
-$stmt = $conn->prepare($query);
-$stmt->bind_param("is", $seller_id, $status_filter);
-$stmt->execute();
-$orders_res = $stmt->get_result();
+// Load catalog + orders data (needed for ownership checks)
+$productsRef = $database->getReference('product')->orderByChild('Sell_Id')->equalTo($seller_id)->getSnapshot()->getValue() ?: [];
+$variantsRef = $database->getReference('product_variant')->getSnapshot()->getValue() ?: [];
+$orderItemsRef = $database->getReference('order_item')->getSnapshot()->getValue() ?: [];
 
-// 3. Handle Driver Assignment
+$variantToProductMap = [];
+foreach ($variantsRef as $vid => $v) {
+    if (isset($productsRef[$v['Prod_Id'] ?? ''])) {
+        $variantToProductMap[$v['PVar_Id'] ?? $vid] = $v;
+    }
+}
+
+// Handle status updates (confirm, cancel, pack)
+if (isset($_POST['update_status'])) {
+    $oid = $_POST['order_id'] ?? '';
+    $new_status = strtoupper($_POST['new_status'] ?? '');
+    $allowed = ['CONFIRMED', 'PACKED', 'CANCELLED'];
+
+    if ($oid && in_array($new_status, $allowed, true) && seller_owns_order($oid, $variantToProductMap, $orderItemsRef)) {
+        if (update_order_status($database, $oid, $new_status)) {
+            $_SESSION['success_msg'] = "Order #$oid updated to $new_status.";
+            header('Location: orders.php?status=' . urlencode($new_status === 'CANCELLED' ? 'CANCELLED' : $new_status));
+            exit;
+        }
+    }
+    $_SESSION['error_msg'] = 'Unable to update order status.';
+    header('Location: orders.php?status=' . urlencode($status_filter));
+    exit;
+}
+
+// Handle driver assignment (seller dispatches to driver)
 if (isset($_POST['assign_driver'])) {
-    $oid = $_POST['order_id'];
-    $did = intval($_POST['driver_id']);
-    
-    // Check shipment
-    $check_ship = $conn->prepare("SELECT Ship_Id FROM shipment WHERE Order_Id = ?");
-    $check_ship->bind_param("s", $oid);
-    $check_ship->execute();
-    $ship_exists = $check_ship->get_result()->num_rows > 0;
-    
-    if ($ship_exists) {
-        $upd = $conn->prepare("UPDATE shipment SET Driv_Id = ?, Ship_Status = 'OUT_FOR_DELIVERY' WHERE Order_Id = ?");
-        $upd->bind_param("is", $did, $oid);
-    } else {
-        $upd = $conn->prepare("INSERT INTO shipment (Order_Id, Driv_Id, Ship_Status, Ship_Courier) VALUES (?, ?, 'OUT_FOR_DELIVERY', 'ZALORA INTERNAL')");
-        $upd->bind_param("si", $oid, $did);
+    $oid = $_POST['order_id'] ?? '';
+    $did = $_POST['driver_id'] ?? '';
+
+    if ($oid && $did && seller_owns_order($oid, $variantToProductMap, $orderItemsRef)) {
+        $shipmentsRef = $database->getReference('shipment')->getSnapshot()->getValue() ?: [];
+        $existing_ship_id = null;
+        foreach ($shipmentsRef as $shipId => $ship) {
+            if (($ship['Order_Id'] ?? '') == $oid) {
+                $existing_ship_id = $shipId;
+                break;
+            }
+        }
+
+        if ($existing_ship_id) {
+            $database->getReference('shipment')->getChild($existing_ship_id)->update([
+                'Driv_Id' => $did,
+                'Ship_Status' => 'OUT_FOR_DELIVERY',
+            ]);
+        } else {
+            $newShipRef = $database->getReference('shipment')->push();
+            $newShipRef->set([
+                'Ship_Id' => $newShipRef->getKey(),
+                'Order_Id' => $oid,
+                'Driv_Id' => $did,
+                'Ship_Status' => 'OUT_FOR_DELIVERY',
+                'Ship_Courier' => 'ZALORA INTERNAL',
+                'Ship_ShippedAt' => date('Y-m-d H:i:s'),
+            ]);
+        }
+
+        update_order_status($database, $oid, 'SHIPPED');
+        $_SESSION['success_msg'] = 'Driver assigned — order is now out for delivery.';
+        header('Location: orders.php?status=SHIPPED');
+        exit;
     }
-    
-    if ($upd->execute()) {
-        $conn->query("UPDATE ORDERS SET Order_Status = 'SHIPPED' WHERE Order_Id = '$oid'");
-        $success_msg = "Driver assigned successfully!";
+    $_SESSION['error_msg'] = 'Unable to assign driver to this order.';
+    header('Location: orders.php?status=' . urlencode($status_filter));
+    exit;
+}
+
+$success_msg = $_SESSION['success_msg'] ?? '';
+$error_msg = $_SESSION['error_msg'] ?? '';
+unset($_SESSION['success_msg'], $_SESSION['error_msg']);
+
+// Fetch remaining data from Firebase
+$ordersRef = $database->getReference('orders')->getSnapshot()->getValue() ?: [];
+$customersRef = $database->getReference('customer')->getSnapshot()->getValue() ?: [];
+$imagesRef = $database->getReference('product_image')->getSnapshot()->getValue() ?: [];
+$shipmentsRef = $database->getReference('shipment')->getSnapshot()->getValue() ?: [];
+$driversRef = $database->getReference('driver')->getSnapshot()->getValue() ?: [];
+
+$customers_by_id = [];
+foreach ($customersRef as $c) {
+    if (is_array($c) && isset($c['Cust_Id'])) {
+        $customers_by_id[$c['Cust_Id']] = $c;
     }
 }
 
-// 4. Fetch Drivers
-$online_drivers = $conn->query("SELECT Driv_Id, Driv_FirstName, Driv_LastName, Driv_VehicleType FROM driver WHERE Driv_IsActive = 1");
+// Map order items
+$orderItemMap = [];
+$seller_order_ids = [];
+foreach ($orderItemsRef as $oi_id => $oi) {
+    $pvar_id = $oi['PVar_Id'] ?? '';
+    if (isset($variantToProductMap[$pvar_id])) {
+        $oid = $oi['Order_Id'] ?? '';
+        $seller_order_ids[$oid] = true;
+        $orderItemMap[$oid][] = $oi;
+    }
+}
+
+$counts = ['PENDING' => 0, 'CONFIRMED' => 0, 'PACKED' => 0, 'SHIPPED' => 0, 'DELIVERED' => 0, 'RETURNED' => 0, 'CANCELLED' => 0];
+$filtered_orders = [];
+
+foreach (array_keys($seller_order_ids) as $oid) {
+    $o = $ordersRef[$oid] ?? null;
+    if (!$o) {
+        foreach ($ordersRef as $ord) {
+            if (is_array($ord) && (string) ($ord['Order_Id'] ?? '') === (string) $oid) {
+                $o = $ord;
+                break;
+            }
+        }
+    }
+    if (!$o) {
+        continue;
+    }
+
+    $s = strtoupper($o['Order_Status'] ?? 'PENDING');
+    if ($s === 'CANCELED') {
+        $s = 'CANCELLED';
+    }
+    if (isset($counts[$s])) {
+        $counts[$s]++;
+    }
+
+    if ($s === $status_filter || ($status_filter === 'CANCELLED' && $s === 'CANCELED')) {
+        $cust = $customers_by_id[$o['Cust_Id'] ?? ''] ?? [];
+        $cust_first = $cust['Cust_FirstName'] ?? 'Unknown';
+        $cust_last = $cust['Cust_LastName'] ?? '';
+
+        $ship_img = '';
+        foreach ($shipmentsRef as $shipId => $ship) {
+            if (($ship['Order_Id'] ?? '') == $oid) {
+                $ship_img = $ship['Ship_ProofImg'] ?? '';
+                break;
+            }
+        }
+
+        foreach ($orderItemMap[$oid] as $oi) {
+            $var = $variantToProductMap[$oi['PVar_Id'] ?? ''] ?? [];
+            $prod = $productsRef[$var['Prod_Id'] ?? ''] ?? [];
+            
+            $img = 'https://via.placeholder.com/100';
+            foreach ($imagesRef as $imgId => $pi) {
+                if (($pi['Prod_Id'] ?? '') == ($prod['Prod_Id'] ?? '') && ($pi['PImg_IsPrimary'] ?? 0) == 1) {
+                    $img = $pi['PImg_ImgUrl'] ?? '';
+                    break;
+                }
+            }
+            
+            $filtered_orders[] = [
+                'Order_Id' => $oid,
+                'Order_PlacedAt' => $o['Order_PlacedAt'] ?? '',
+                'Order_Status' => $s,
+                'Cust_FirstName' => $cust_first,
+                'Cust_LastName' => $cust_last,
+                'OdItm_Quantity' => $oi['OdItm_Quantity'] ?? 0,
+                'OdItm_Subtotal' => $oi['OdItm_Subtotal'] ?? 0,
+                'PVar_Size' => $var['PVar_Size'] ?? '',
+                'PVar_Color' => $var['PVar_Color'] ?? '',
+                'Prod_Name' => $prod['Prod_Name'] ?? '',
+                'img' => $img,
+                'Ship_ProofImg' => $ship_img
+            ];
+        }
+    }
+}
+
+usort($filtered_orders, function($a, $b) {
+    return strtotime($b['Order_PlacedAt'] ?? '2000-01-01') <=> strtotime($a['Order_PlacedAt'] ?? '2000-01-01');
+});
+
+$online_drivers = [];
+foreach ($driversRef as $did => $d) {
+    if (!is_array($d)) continue;
+    if (($d['Driv_IsActive'] ?? 0) == 1) {
+        $d['Driv_Id'] = $d['Driv_Id'] ?? $did;
+        $online_drivers[] = $d;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -83,33 +223,7 @@ $online_drivers = $conn->query("SELECT Driv_Id, Driv_FirstName, Driv_LastName, D
     <title>Seller Center - Orders</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/seller.css">
-    <style>
-        /* FAIL-SAFE STYLES */
-        :root { --black: #000; --white: #fff; --bg-light: #f9fafb; --border: #f1f1f1; --text-muted: #666; --text-light: #999; }
-        body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg-light); display: flex; }
-        .sidebar { width: 240px; background: var(--white); border-right: 1px solid var(--border); position: fixed; height: 100vh; z-index: 100; }
-        .main-wrapper { margin-left: 240px; flex-grow: 1; padding: 40px; min-width: 0; }
-        .order-card { background: var(--white); border: 1px solid var(--border); display: flex; margin-bottom: 25px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.02); }
-        .order-img { width: 200px; height: 250px; object-fit: cover; flex-shrink: 0; background: #eee; }
-        .order-details { flex-grow: 1; padding: 25px; display: flex; flex-direction: column; }
-        .order-header { display: flex; justify-content: space-between; margin-bottom: 20px; }
-        .order-name { font-size: 18px; font-weight: 700; margin: 0 0 5px; text-transform: uppercase; }
-        .order-id { font-size: 10px; font-weight: 800; color: var(--text-light); margin: 0 0 10px; letter-spacing: 0.1em; }
-        .order-meta { font-size: 11px; color: var(--text-muted); }
-        .order-footer { margin-top: auto; padding-top: 20px; border-top: 1px solid var(--bg-light); display: flex; justify-content: space-between; align-items: center; }
-        .order-info-grid { display: flex; gap: 40px; }
-        .info-block label { display: block; font-size: 9px; font-weight: 800; color: var(--text-light); margin-bottom: 5px; }
-        .info-block span { font-size: 13px; font-weight: 600; }
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 8px; }
-        .status-dot.orange { background: #f97316; }
-        .status-dot.green { background: #22c55e; }
-        .tabs { display: flex; gap: 25px; border-bottom: 1px solid var(--border); margin-top: 20px; }
-        .tab { text-decoration: none; color: var(--text-light); font-size: 11px; font-weight: 700; padding: 12px 0; text-transform: uppercase; position: relative; }
-        .tab.active { color: #000; }
-        .tab.active::after { content: ''; position: absolute; bottom: -1px; left: 0; width: 100%; height: 2px; background: #000; }
-        .btn-dark { background: #000; color: #fff; border: none; padding: 10px 25px; font-size: 10px; font-weight: 700; cursor: pointer; text-transform: uppercase; }
-        .btn-secondary { background: #f4f4f4; border: none; padding: 10px 25px; font-size: 10px; font-weight: 700; cursor: pointer; text-transform: uppercase; margin-right: 10px; }
-    </style>
+    <link rel="stylesheet" href="../assets/css/seller-orders.css?v=<?= time() ?>">
 </head>
 <body>
 
@@ -119,22 +233,29 @@ $online_drivers = $conn->query("SELECT Driv_Id, Driv_FirstName, Driv_LastName, D
 <div class="main-wrapper">
     <main class="main-content">
         
-        <?php if (isset($success_msg)): ?>
+        <?php if ($success_msg): ?>
             <div style="background: #f0fdf4; color: #16a34a; padding: 15px; border-left: 5px solid #16a34a; margin-bottom: 20px; font-size: 13px; font-weight: 600;">
-                <?= $success_msg ?>
+                <?= htmlspecialchars($success_msg) ?>
+            </div>
+        <?php endif; ?>
+        <?php if ($error_msg): ?>
+            <div style="background: #fef2f2; color: #b91c1c; padding: 15px; border-left: 5px solid #b91c1c; margin-bottom: 20px; font-size: 13px; font-weight: 600;">
+                <?= htmlspecialchars($error_msg) ?>
             </div>
         <?php endif; ?>
 
         <header class="page-header" style="align-items: center;">
             <div>
-                <h2 class="page-title">ORDER MANAGEMENT</h2>
+                <h2 class="page-title">ORDER FULFILLMENT</h2>
+                <p class="page-subtitle" style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">Confirm orders, pack items, and assign drivers for your products.</p>
                 <div class="tabs">
                     <a href="?status=PENDING" class="tab <?= $status_filter == 'PENDING' ? 'active' : '' ?>">Pending (<?= $counts['PENDING'] ?>)</a>
                     <a href="?status=CONFIRMED" class="tab <?= $status_filter == 'CONFIRMED' ? 'active' : '' ?>">Confirmed (<?= $counts['CONFIRMED'] ?>)</a>
+                    <a href="?status=PACKED" class="tab <?= $status_filter == 'PACKED' ? 'active' : '' ?>">Packed (<?= $counts['PACKED'] ?>)</a>
                     <a href="?status=SHIPPED" class="tab <?= $status_filter == 'SHIPPED' ? 'active' : '' ?>">Shipped (<?= $counts['SHIPPED'] ?>)</a>
                     <a href="?status=DELIVERED" class="tab <?= $status_filter == 'DELIVERED' ? 'active' : '' ?>">Delivered (<?= $counts['DELIVERED'] ?>)</a>
                     <a href="?status=RETURNED" class="tab <?= $status_filter == 'RETURNED' ? 'active' : '' ?>">Returned (<?= $counts['RETURNED'] ?>)</a>
-                    <a href="?status=CANCELED" class="tab <?= $status_filter == 'CANCELED' ? 'active' : '' ?>">Canceled (<?= $counts['CANCELED'] ?>)</a>
+                    <a href="?status=CANCELLED" class="tab <?= $status_filter == 'CANCELLED' ? 'active' : '' ?>">Cancelled (<?= $counts['CANCELLED'] ?>)</a>
                 </div>
             </div>
             <div class="search-filter">
@@ -150,8 +271,8 @@ $online_drivers = $conn->query("SELECT Driv_Id, Driv_FirstName, Driv_LastName, D
         </header>
 
         <div class="order-list">
-            <?php if ($orders_res->num_rows > 0): ?>
-                <?php while($o = $orders_res->fetch_assoc()): 
+            <?php if (count($filtered_orders) > 0): ?>
+                <?php foreach($filtered_orders as $o): 
                     $img_path = $o['img'] ?? 'https://via.placeholder.com/100';
                     if (!empty($o['img']) && strpos($o['img'], 'http') === false) {
                         $img_path = '../' . $o['img'];
@@ -160,7 +281,7 @@ $online_drivers = $conn->query("SELECT Driv_Id, Driv_FirstName, Driv_LastName, D
                     $status_color = ($status == 'DELIVERED' || $status == 'SHIPPED') ? 'green' : 'orange';
                 ?>
                 <div class="order-card">
-                    <img src="<?= $img_path ?>" alt="<?= htmlspecialchars($o['Prod_Name']) ?>" class="order-img">
+                    <img src="<?= htmlspecialchars($img_path) ?>" alt="<?= htmlspecialchars($o['Prod_Name']) ?>" class="order-img">
                     <div class="order-details">
                         <div class="order-header">
                             <div>
@@ -186,34 +307,52 @@ $online_drivers = $conn->query("SELECT Driv_Id, Driv_FirstName, Driv_LastName, D
                                 <div class="info-block">
                                     <label>STATUS</label>
                                     <span><i class="status-dot <?= $status_color ?>"></i><span class="status-text"><?= $status ?></span></span>
-                                    <?php if ($o['Ship_ProofImg']): ?>
+                                    <?php if (!empty($o['Ship_ProofImg'])): ?>
                                         <a href="../<?= htmlspecialchars($o['Ship_ProofImg']) ?>" target="_blank" style="display: block; font-size: 9px; color: #000; font-weight: 700; margin-top: 5px; text-decoration: underline;">VIEW PROOF</a>
                                     <?php endif; ?>
                                 </div>
                             </div>
-                            <div class="order-actions" style="display: flex; gap: 10px; align-items: center;">
-                                <?php if ($status == 'CONFIRMED'): ?>
+                            <div class="order-actions" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                                <?php if ($status === 'PENDING'): ?>
+                                    <form method="POST" style="display: inline;">
+                                        <input type="hidden" name="order_id" value="<?= htmlspecialchars($o['Order_Id']) ?>">
+                                        <input type="hidden" name="new_status" value="CONFIRMED">
+                                        <button type="submit" name="update_status" class="btn-dark" style="padding: 10px 15px; font-size: 9px;">CONFIRM ORDER</button>
+                                    </form>
+                                    <form method="POST" style="display: inline;" onsubmit="return confirm('Cancel this order?');">
+                                        <input type="hidden" name="order_id" value="<?= htmlspecialchars($o['Order_Id']) ?>">
+                                        <input type="hidden" name="new_status" value="CANCELLED">
+                                        <button type="submit" name="update_status" class="btn-secondary" style="padding: 10px 15px; font-size: 9px;">CANCEL</button>
+                                    </form>
+                                <?php elseif ($status === 'CONFIRMED' || $status === 'PACKED'): ?>
+                                    <?php if ($status === 'CONFIRMED'): ?>
+                                    <form method="POST" style="display: inline;">
+                                        <input type="hidden" name="order_id" value="<?= htmlspecialchars($o['Order_Id']) ?>">
+                                        <input type="hidden" name="new_status" value="PACKED">
+                                        <button type="submit" name="update_status" class="btn-secondary" style="padding: 10px 15px; font-size: 9px;">MARK PACKED</button>
+                                    </form>
+                                    <?php endif; ?>
                                     <form method="POST" style="display: flex; gap: 10px; align-items: center;">
-                                        <input type="hidden" name="order_id" value="<?= $o['Order_Id'] ?>">
+                                        <input type="hidden" name="order_id" value="<?= htmlspecialchars($o['Order_Id']) ?>">
                                         <select name="driver_id" style="padding: 8px; font-size: 11px; border: 1px solid #ddd;" required>
                                             <option value="">SELECT DRIVER...</option>
-                                            <?php 
-                                            $online_drivers->data_seek(0);
-                                            while($d = $online_drivers->fetch_assoc()): ?>
-                                                <option value="<?= $d['Driv_Id'] ?>"><?= $d['Driv_FirstName'] ?> (<?= $d['Driv_VehicleType'] ?>)</option>
-                                            <?php endwhile; ?>
+                                            <?php foreach ($online_drivers as $d): ?>
+                                                <option value="<?= htmlspecialchars($d['Driv_Id']) ?>">
+                                                    <?= htmlspecialchars(trim(($d['Driv_FirstName'] ?? '') . ' ' . ($d['Driv_LastName'] ?? ''))) ?>
+                                                    (<?= htmlspecialchars($d['Driv_VehicleType'] ?? 'Vehicle') ?>)
+                                                </option>
+                                            <?php endforeach; ?>
                                         </select>
-                                        <button type="submit" name="assign_driver" class="btn-dark" style="padding: 10px 15px; font-size: 9px;">CONFIRM DISPATCH</button>
+                                        <button type="submit" name="assign_driver" class="btn-dark" style="padding: 10px 15px; font-size: 9px;">ASSIGN DRIVER</button>
                                     </form>
                                 <?php else: ?>
-                                    <button class="btn-secondary">VIEW DETAILS</button>
-                                    <button class="btn-dark" disabled style="opacity: 0.5; cursor: not-allowed;"><?= $status ?></button>
+                                    <span style="font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;"><?= htmlspecialchars($status) ?></span>
                                 <?php endif; ?>
                             </div>
                         </div>
                     </div>
                 </div>
-                <?php endwhile; ?>
+                <?php endforeach; ?>
             <?php else: ?>
                 <div style="text-align: center; padding: 100px; color: var(--text-light);">
                     <p>No orders found for this category yet.</p>

@@ -11,7 +11,7 @@ $order_id = isset($_GET['id']) ? $_GET['id'] : '';
 $cust_id = $_SESSION['user_id'];
 
 // 1. Fetch Order Header + Address + Driver Info + Proof
-$orderSnapshot = $database->getReference('ORDERS')->orderByChild('Order_Id')->equalTo($order_id)->getSnapshot()->getValue();
+$orderSnapshot = $database->getReference('orders')->orderByChild('Order_Id')->equalTo($order_id)->getSnapshot()->getValue();
 $order = $orderSnapshot ? reset($orderSnapshot) : null;
 
 if (!$order || ($order['Cust_Id'] ?? '') != $cust_id) {
@@ -20,7 +20,7 @@ if (!$order || ($order['Cust_Id'] ?? '') != $cust_id) {
 
 // Fetch Address
 $addr_id = $order['Addrs_Id'] ?? '';
-$addrSnapshot = $database->getReference('ADDRESS')->orderByChild('Addrs_id')->equalTo($addr_id)->getSnapshot()->getValue();
+$addrSnapshot = $database->getReference('address')->orderByChild('Addrs_id')->equalTo($addr_id)->getSnapshot()->getValue();
 $addr = $addrSnapshot ? reset($addrSnapshot) : [];
 if ($addr) {
     $order = array_merge($order, $addr);
@@ -44,7 +44,7 @@ if ($shipment) {
 
 // 2. Fetch Order Items
 $items = [];
-$oiSnapshot = $database->getReference('ORDER_ITEM')->orderByChild('Order_Id')->equalTo($order_id)->getSnapshot()->getValue();
+$oiSnapshot = $database->getReference('order_item')->orderByChild('Order_Id')->equalTo($order_id)->getSnapshot()->getValue();
 if ($oiSnapshot) {
     $allVariants = $database->getReference('product_variant')->getSnapshot()->getValue() ?: [];
     $allProducts = $database->getReference('product')->getSnapshot()->getValue() ?: [];
@@ -134,192 +134,7 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
     <title>ZALORA — Order #<?= $order_id ?></title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
     <link rel="stylesheet" href="../assets/css/global.css"/>
-    <style>
-        :root {
-            --black: #000000;
-            --white: #ffffff;
-            --background: #fdfdfd;
-            --border: rgba(0,0,0,0.06);
-            --border-light: rgba(0,0,0,0.03);
-            --text-dark: #111111;
-            --text-light: #777777;
-            --radius-sm: 8px;
-            --radius-md: 12px;
-            --radius-lg: 18px;
-            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.03);
-            --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.06);
-            --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-            --accent-green-bg: #e6fffa;
-            --accent-green-text: #2e7d32;
-            --accent-red-bg: #fdf2f2;
-            --accent-red-text: #c53030;
-        }
-        
-        body { background: #fafafa; font-family: 'Outfit', sans-serif; color: var(--text-dark); margin: 0; padding: 0; }
-        .detail-container { max-width: 800px; margin: 40px auto; padding: 0 20px; }
-        .back-link { display: inline-block; margin-bottom: 20px; color: var(--text-light); text-decoration: none; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; transition: var(--transition); }
-        .back-link:hover { color: var(--black); }
-        
-        .order-header { 
-            background: var(--white); 
-            padding: 30px; 
-            border: 1px solid var(--border); 
-            border-radius: var(--radius-md);
-            margin-bottom: 20px; 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            box-shadow: var(--shadow-sm);
-        }
-        .order-id { font-size: 20px; font-weight: 800; margin: 0 0 5px 0; letter-spacing: -0.02em; }
-        .order-date { font-size: 12px; color: var(--text-light); margin: 0; }
-        .status-badge { 
-            background: var(--black); 
-            color: var(--white); 
-            padding: 8px 16px; 
-            font-size: 10px; 
-            font-weight: 700; 
-            text-transform: uppercase; 
-            letter-spacing: 0.1em; 
-            border-radius: var(--radius-sm);
-        }
-        
-        .card { 
-            background: var(--white); 
-            border: 1px solid var(--border); 
-            padding: 35px; 
-            margin-bottom: 20px; 
-            border-radius: var(--radius-md);
-            box-shadow: var(--shadow-sm);
-        }
-        .card-title { 
-            font-size: 11px; 
-            font-weight: 700; 
-            text-transform: uppercase; 
-            letter-spacing: 0.1em; 
-            margin: 0 0 25px 0; 
-            border-bottom: 1px solid var(--border); 
-            padding-bottom: 12px; 
-            color: var(--text-light);
-        }
-        
-        .item-row { display: grid; grid-template-columns: 80px 1fr 120px; gap: 20px; padding: 20px 0; border-bottom: 1px solid var(--border-light); }
-        .item-img { width: 80px; height: 100px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--border); }
-        .item-info h4 { font-size: 14px; font-weight: 700; margin: 0 0 5px 0; }
-        .item-variant { font-size: 11px; color: var(--text-light); margin: 3px 0; }
-        .item-price { text-align: right; font-weight: 700; font-size: 14px; }
-        
-        .summary-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 10px; color: var(--text-light); }
-        .total-row { display: flex; justify-content: space-between; font-weight: 800; font-size: 18px; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border); color: var(--black); }
-        
-        .shipping-info p { font-size: 13px; color: #444; line-height: 1.6; margin: 0 0 5px 0; }
-        .nav-logo { font-size: 24px; font-weight: 800; text-align: center; display: block; margin: 30px 0; text-decoration: none; color: var(--black); letter-spacing: 0.25em; }
-        
-        .btn-review { background: #f4f4f4; border: none; padding: 6px 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; cursor: pointer; margin-top: 10px; display: inline-block; border-radius: var(--radius-sm); transition: var(--transition); }
-        .btn-review:hover { background: var(--black); color: var(--white); }
-        
-        /* Stepper Tracking timeline styles */
-        .tracking-wrapper {
-            background: var(--white);
-            border: 1px solid var(--border);
-            padding: 30px;
-            border-radius: var(--radius-md);
-            box-shadow: var(--shadow-sm);
-            margin-bottom: 20px;
-        }
-        .stepper-container {
-            display: flex;
-            justify-content: space-between;
-            position: relative;
-            margin-top: 25px;
-            margin-bottom: 15px;
-        }
-        .stepper-line {
-            position: absolute;
-            top: 15px;
-            left: 45px;
-            right: 45px;
-            height: 3px;
-            background: #eee;
-            z-index: 1;
-            border-radius: 2px;
-        }
-        .stepper-line-progress {
-            position: absolute;
-            top: 0;
-            left: 0;
-            height: 100%;
-            background: var(--black);
-            transition: var(--transition);
-            border-radius: 2px;
-        }
-        .step-node {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            position: relative;
-            z-index: 2;
-            width: 90px;
-        }
-        .step-dot {
-            width: 30px;
-            height: 30px;
-            background: #f9f9f9;
-            border: 3px solid #eee;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 11px;
-            font-weight: 800;
-            color: var(--text-light);
-            transition: var(--transition);
-        }
-        .step-label {
-            margin-top: 10px;
-            font-size: 10px;
-            font-weight: 700;
-            color: var(--text-light);
-            text-align: center;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            transition: var(--transition);
-        }
-        .step-subtext {
-            font-size: 9px;
-            color: var(--text-light);
-            margin-top: 2px;
-            text-align: center;
-        }
-        .step-node.active .step-dot {
-            background: var(--white);
-            border-color: var(--black);
-            color: var(--black);
-            box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.05);
-        }
-        .step-node.active .step-label {
-            color: var(--black);
-        }
-        .step-node.completed .step-dot {
-            background: var(--black);
-            border-color: var(--black);
-            color: var(--white);
-        }
-        .step-node.completed .step-label {
-            color: var(--black);
-        }
-
-        /* Modal Styles */
-        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); transition: var(--transition); }
-        .modal-content { background: var(--white); width: 400px; margin: 100px auto; padding: 35px; position: relative; border-radius: var(--radius-md); box-shadow: var(--shadow-md); border: 1px solid var(--border); }
-        .modal-close { position: absolute; top: 15px; right: 20px; cursor: pointer; font-size: 24px; color: var(--text-light); transition: var(--transition); }
-        .modal-close:hover { color: var(--black); }
-        .review-form label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; margin-bottom: 8px; color: var(--text-light); letter-spacing: 0.05em; }
-        .review-form select, .review-form textarea, .review-form input { width: 100%; padding: 12px; margin-bottom: 20px; border: 1px solid var(--border); font-family: inherit; border-radius: var(--radius-sm); outline: none; box-sizing: border-box; transition: var(--transition); }
-        .review-form select:focus, .review-form textarea:focus, .review-form input:focus { border-color: var(--black); }
-        .btn-submit-review { width: 100%; background: var(--black); color: var(--white); border: none; padding: 15px; font-weight: 700; text-transform: uppercase; cursor: pointer; border-radius: var(--radius-sm); transition: var(--transition); }
-        .btn-submit-review:hover { opacity: 0.9; }
-    </style>
+    <link rel="stylesheet" href="../assets/css/order-details.css?v=<?= time() ?>">
 </head>
 <body>
 
@@ -493,7 +308,7 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
         </div>
     </div>
 
-    <?php if ($order['Ship_ProofImg']): ?>
+    <?php if (!empty($order['Ship_ProofImg'])): ?>
         <div class="card">
             <h2 class="card-title">Proof of Delivery</h2>
             <div style="text-align: center;">
@@ -503,7 +318,7 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
         </div>
     <?php endif; ?>
 
-    <?php if ($order['Driv_FirstName']): ?>
+    <?php if (!empty($order['Driv_FirstName'])): ?>
         <div class="card" style="border-left: 5px solid #000;">
             <h2 class="card-title">Delivery Information</h2>
             <div style="display: flex; align-items: center; gap: 20px;">
@@ -512,10 +327,10 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
                 </div>
                 <div>
                     <p style="font-size: 14px; font-weight: 700; margin: 0;"><?= htmlspecialchars($order['Driv_FirstName'] . ' ' . $order['Driv_LastName']) ?></p>
-                    <p style="font-size: 11px; color: #666; text-transform: uppercase; margin-top: 4px;"><?= htmlspecialchars($order['Driv_VehicleType']) ?></p>
+                    <p style="font-size: 11px; color: #666; text-transform: uppercase; margin-top: 4px;"><?= htmlspecialchars($order['Driv_VehicleType'] ?? '') ?></p>
                 </div>
                 <div style="margin-left: auto;">
-                    <a href="tel:<?= $order['Driv_Phone'] ?>" style="display: inline-block; background: #f4f4f4; padding: 10px; border-radius: 50%;">
+                    <a href="tel:<?= htmlspecialchars($order['Driv_Phone'] ?? '') ?>" style="display: inline-block; background: #f4f4f4; padding: 10px; border-radius: 50%;">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.88 12.88 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
                     </a>
                 </div>

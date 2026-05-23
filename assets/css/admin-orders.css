@@ -1,0 +1,4 @@
+.order-table { width: 100%; border-collapse: collapse; background: white; border: 1px solid #eee; }
+        .order-table th, .order-table td { padding: 1rem; border-bottom: 1px solid #eee; text-align: left; }
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; background: #eee; }
+        .notice { background: #eff6ff; color: #1e40af; padding: 1rem; margin-bottom: 1.5rem; border-left: 4px solid #3b82f6; font-size: 13px; }

@@ -6,110 +6,105 @@ if (!isset($_SESSION['admin_logged_in'])) {
 }
 require_once '../config/db.php';
 
-$order_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+$order_id = $_GET['id'] ?? null;
 
-// Handle Status Update
-if (isset($_POST['update_status'])) {
-    $new_status = $_POST['order_status'];
-    $stmt = $conn->prepare("UPDATE ORDERS SET Order_Status = ? WHERE Order_Id = ?");
-    $stmt->bind_param("si", $new_status, $order_id);
-    if ($stmt->execute()) {
-        $success = "Order status updated successfully!";
+$all_customers_raw = $database->getReference('customer')->getSnapshot()->getValue() ?: [];
+$customers_by_id = [];
+foreach ($all_customers_raw as $c) {
+    if (isset($c['Cust_Id'])) {
+        $customers_by_id[$c['Cust_Id']] = $c;
     }
 }
 
-// Handle Driver Assignment
-if (isset($_POST['assign_driver']) && $order_id > 0) {
-    $driv_id = intval($_POST['driver_id']);
-    // Check if shipment entry exists
-    $check_ship = $conn->prepare("SELECT Ship_Id FROM shipment WHERE Order_Id = ?");
-    $check_ship->bind_param("i", $order_id);
-    $check_ship->execute();
-    $ship_res = $check_ship->get_result();
-    
-    if ($ship_res->num_rows > 0) {
-        $upd_ship = $conn->prepare("UPDATE shipment SET Driv_Id = ?, Ship_Status = 'OUT_FOR_DELIVERY' WHERE Order_Id = ?");
-        $upd_ship->bind_param("ii", $driv_id, $order_id);
-    } else {
-        $upd_ship = $conn->prepare("INSERT INTO shipment (Order_Id, Driv_Id, Ship_Status, Ship_Courier) VALUES (?, ?, 'OUT_FOR_DELIVERY', 'ZALORA INTERNAL')");
-        $upd_ship->bind_param("ii", $order_id, $driv_id);
-    }
-    
-    if ($upd_ship->execute()) {
-        $conn->query("UPDATE ORDERS SET Order_Status = 'SHIPPED' WHERE Order_Id = $order_id");
-        $success = "Driver assigned! Order is now OUT FOR DELIVERY.";
-    }
-}
+$order = null;
+$items = [];
+$orders_list = [];
+$shipment = null;
 
-// Fetch Orders
-if ($order_id > 0) {
-    // Detail View
-    $query = "SELECT o.*, c.Cust_Firstname, c.Cust_Lastname, c.Cust_Email, a.Addrs_Street, a.Addrs_City 
-              FROM ORDERS o 
-              JOIN CUSTOMER c ON o.Cust_Id = c.Cust_Id 
-              JOIN ADDRESS a ON o.Addrs_Id = a.Addrs_id 
-              WHERE o.Order_Id = ?";
-    $stmt = $conn->prepare($query);
-    $stmt->bind_param("i", $order_id);
-    $stmt->execute();
-    $order = $stmt->get_result()->fetch_assoc();
+if ($order_id) {
+    $orderRef = $database->getReference('orders')->orderByChild('Order_Id')->equalTo($order_id)->getSnapshot()->getValue();
+    if ($orderRef) {
+        $order_data = current($orderRef);
+        $cust = $customers_by_id[$order_data['Cust_Id'] ?? ''] ?? [];
+        $addrs_id = $order_data['Addrs_Id'] ?? $order_data['Addrs_id'] ?? null;
+        $addrRef = $database->getReference('address')->orderByChild('Addrs_id')->equalTo($addrs_id)->getSnapshot()->getValue();
+        $addr = $addrRef ? current($addrRef) : [];
 
-    $items_query = "SELECT oi.*, p.Prod_Name, pv.PVar_Size, pv.PVar_Color 
-                    FROM ORDER_ITEM oi 
-                    JOIN PRODUCT_VARIANT pv ON oi.PVar_Id = pv.PVar_Id 
-                    JOIN PRODUCT p ON pv.Prod_Id = p.Prod_Id 
-                    WHERE oi.Order_Id = ?";
-    $stmt_i = $conn->prepare($items_query);
-    $stmt_i->bind_param("i", $order_id);
-    $stmt_i->execute();
-    $items = $stmt_i->get_result();
+        $order = array_merge($order_data, [
+            'Cust_Firstname' => $cust['Cust_Firstname'] ?? 'Unknown',
+            'Cust_Lastname'  => $cust['Cust_Lastname']  ?? '',
+            'Cust_Email'     => $cust['Cust_Email']     ?? '',
+            'Addrs_Street'   => $addr['Addrs_Street']   ?? '',
+            'Addrs_City'     => $addr['Addrs_City']     ?? '',
+        ]);
+
+        $shipRef = $database->getReference('shipment')->orderByChild('Order_Id')->equalTo($order_id)->getSnapshot()->getValue();
+        $shipment = $shipRef ? current($shipRef) : null;
+
+        $itemsRef = $database->getReference('order_item')->orderByChild('Order_Id')->equalTo($order_id)->getSnapshot()->getValue();
+        foreach (($itemsRef ?: []) as $oi) {
+            $pvar_id = $oi['PVar_Id'] ?? null;
+            $pvarRef = $database->getReference('product_variant')->orderByChild('PVar_Id')->equalTo($pvar_id)->getSnapshot()->getValue();
+            $pvar = $pvarRef ? current($pvarRef) : [];
+            $prod_id = $pvar['Prod_Id'] ?? null;
+            $prodRef = $database->getReference('product')->orderByChild('Prod_Id')->equalTo($prod_id)->getSnapshot()->getValue();
+            $prod = $prodRef ? current($prodRef) : [];
+            $items[] = array_merge($oi, [
+                'Prod_Name'  => $prod['Prod_Name']  ?? 'Unknown Product',
+                'PVar_Size'  => $pvar['PVar_Size']  ?? '-',
+                'PVar_Color' => $pvar['PVar_Color'] ?? '',
+                'Sell_Id'    => $prod['Sell_Id']    ?? '',
+            ]);
+        }
+    }
 } else {
-    // List View
-    $orders = $conn->query("SELECT o.*, c.Cust_Firstname, c.Cust_Lastname 
-                           FROM ORDERS o 
-                           JOIN CUSTOMER c ON o.Cust_Id = c.Cust_Id 
-                           ORDER BY o.Order_PlacedAt DESC");
+    $all_orders_raw = $database->getReference('orders')->getSnapshot()->getValue() ?: [];
+    usort($all_orders_raw, fn($a, $b) => strtotime($b['Order_PlacedAt'] ?? 0) - strtotime($a['Order_PlacedAt'] ?? 0));
+    foreach ($all_orders_raw as $o) {
+        if (!is_array($o)) {
+            continue;
+        }
+        $cust = $customers_by_id[$o['Cust_Id'] ?? ''] ?? [];
+        $orders_list[] = array_merge($o, [
+            'Cust_Firstname' => $cust['Cust_Firstname'] ?? 'Unknown',
+            'Cust_Lastname'  => $cust['Cust_Lastname'] ?? '',
+        ]);
+    }
 }
 
-$statuses = ['PENDING', 'CONFIRMED', 'PACKED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'RETURNED'];
-
-// Fetch Online Drivers
-$online_drivers = $conn->query("SELECT Driv_Id, Driv_FirstName, Driv_LastName, Driv_VehicleType FROM driver WHERE Driv_IsActive = 1");
+$sellers_by_id = [];
+foreach ($database->getReference('seller')->getSnapshot()->getValue() ?: [] as $s) {
+    if (is_array($s) && isset($s['Sell_Id'])) {
+        $sellers_by_id[$s['Sell_Id']] = $s['Sell_BusinessName'] ?? 'Unknown Seller';
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Order Management - Zalora Admin</title>
+    <title>Orders Overview - Zalora Admin</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/admin.css">
-    <style>
-        .status-select { padding: 10px; border: 1px solid #ddd; font-weight: 600; }
-        .btn-update { background: #000; color: #fff; border: none; padding: 10px 20px; font-weight: 700; cursor: pointer; }
-        .order-table { width: 100%; border-collapse: collapse; background: white; border: 1px solid #eee; }
-        .order-table th, .order-table td { padding: 1rem; border-bottom: 1px solid #eee; text-align: left; }
-        .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; background: #eee; }
-        .badge-pending { background: #fef3c7; color: #92400e; }
-        .badge-shipped { background: #dcfce7; color: #166534; }
-    </style>
+    <link rel="stylesheet" href="../assets/css/admin-orders.css?v=<?= time() ?>">
 </head>
 <body>
 <?php include 'sidebar.php'; ?>
 <div class="main-content">
     <header class="header">
-        <h1 class="page-title"><?= $order_id > 0 ? "Order Detail #$order_id" : "Order Management" ?></h1>
-        <?php if ($order_id > 0): ?>
+        <h1 class="page-title"><?= $order_id ? "Order Overview #$order_id" : "Orders Overview" ?></h1>
+        <?php if ($order_id): ?>
             <a href="orders.php" style="color: #666; text-decoration: none; font-size: 14px;">← Back to List</a>
         <?php endif; ?>
     </header>
 
-    <?php if (isset($success)): ?>
-        <div style="background: #dcfce7; color: #166534; padding: 1rem; margin-bottom: 1rem; border-radius: 4px;"><?= $success ?></div>
-    <?php endif; ?>
+    <div class="notice">
+        Sellers manage order fulfillment in <strong>Seller Center → Orders</strong> (confirm, pack, assign drivers).
+        This page is read-only for platform oversight.
+    </div>
 
-    <?php if ($order_id > 0 && $order): ?>
-        <!-- DETAIL VIEW -->
+    <?php if ($order_id && $order): ?>
         <div style="display: grid; grid-template-columns: 1fr 350px; gap: 2rem;">
             <div>
                 <div class="card" style="margin-bottom: 2rem;">
@@ -118,72 +113,53 @@ $online_drivers = $conn->query("SELECT Driv_Id, Driv_FirstName, Driv_LastName, D
                         <thead>
                             <tr>
                                 <th>Product</th>
+                                <th>Seller</th>
                                 <th>Variant</th>
                                 <th>Qty</th>
                                 <th>Subtotal</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <?php while($item = $items->fetch_assoc()): ?>
+                            <?php foreach ($items as $item): ?>
                             <tr>
                                 <td><?= htmlspecialchars($item['Prod_Name']) ?></td>
+                                <td style="font-size: 12px;"><?= htmlspecialchars($sellers_by_id[$item['Sell_Id'] ?? ''] ?? '—') ?></td>
                                 <td style="font-size: 12px; color: #666;">
-                                    <?= $item['PVar_Color'] ? $item['PVar_Color'] . ' • ' : '' ?>Size <?= $item['PVar_Size'] ?>
+                                    <?= $item['PVar_Color'] ? htmlspecialchars($item['PVar_Color']) . ' • ' : '' ?>Size <?= htmlspecialchars($item['PVar_Size']) ?>
                                 </td>
-                                <td><?= $item['OdItm_Quantity'] ?></td>
-                                <td style="font-weight: 600;">$<?= number_format($item['OdItm_Subtotal'], 2) ?></td>
+                                <td><?= (int) ($item['OdItm_Quantity'] ?? 0) ?></td>
+                                <td style="font-weight: 600;">$<?= number_format($item['OdItm_Subtotal'] ?? 0, 2) ?></td>
                             </tr>
-                            <?php endwhile; ?>
+                            <?php endforeach; ?>
                         </tbody>
                     </table>
                 </div>
-
                 <div class="card">
                     <h2 style="font-size: 14px; text-transform: uppercase; margin-bottom: 1rem;">Shipping Details</h2>
-                    <p><strong>Customer:</strong> <?= htmlspecialchars($order['Cust_Firstname'] . ' ' . $order['Cust_Lastname']) ?></p>
-                    <p><strong>Address:</strong> <?= htmlspecialchars($order['Addrs_Street'] . ', ' . $order['Addrs_City']) ?></p>
-                    <p><strong>Email:</strong> <?= htmlspecialchars($order['Cust_Email']) ?></p>
+                    <p><strong>Customer:</strong> <?= htmlspecialchars(trim(($order['Cust_Firstname'] ?? '') . ' ' . ($order['Cust_Lastname'] ?? ''))) ?></p>
+                    <p><strong>Address:</strong> <?= htmlspecialchars(trim(($order['Addrs_Street'] ?? '') . ', ' . ($order['Addrs_City'] ?? ''))) ?></p>
+                    <p><strong>Email:</strong> <?= htmlspecialchars($order['Cust_Email'] ?? '') ?></p>
                 </div>
             </div>
-
             <div>
                 <div class="card">
-                    <h2 style="font-size: 14px; text-transform: uppercase; margin-bottom: 1rem;">Order Status</h2>
-                    <form method="POST">
-                        <select name="order_status" class="status-select" style="width: 100%; margin-bottom: 1rem;">
-                            <?php foreach ($statuses as $s): ?>
-                                <option value="<?= $s ?>" <?= $order['Order_Status'] === $s ? 'selected' : '' ?>><?= $s ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                        <button type="submit" name="update_status" class="btn-update" style="width: 100%;">Update Status</button>
-                    </form>
-                    <hr style="margin: 2rem 0; border: none; border-top: 1px solid #eee;">
-                    <div style="font-size: 14px;">
-                        <p style="margin-bottom: 10px;"><strong>Order Date:</strong> <?= date('F j, Y', strtotime($order['Order_PlacedAt'])) ?></p>
-                        <p style="font-size: 18px;"><strong>Total Amount:</strong> $<?= number_format($order['Order_TotalAmnt'], 2) ?></p>
-                    </div>
-                </div> <!-- End Order Status Card -->
-
-                <div class="card" style="margin-top: 2rem;">
-                    <h2 style="font-size: 14px; text-transform: uppercase; margin-bottom: 1rem;">Assign Driver</h2>
-                    <form method="POST">
-                        <select name="driver_id" class="status-select" style="width: 100%; margin-bottom: 1rem;" required>
-                            <option value="">Select a Driver...</option>
-                            <?php 
-                            $online_drivers->data_seek(0); // Reset pointer
-                            while($d = $online_drivers->fetch_assoc()): ?>
-                                <option value="<?= $d['Driv_Id'] ?>"><?= htmlspecialchars($d['Driv_FirstName'] . ' ' . $d['Driv_LastName']) ?> (<?= $d['Driv_VehicleType'] ?>)</option>
-                            <?php endwhile; ?>
-                        </select>
-                        <button type="submit" name="assign_driver" class="btn-update" style="width: 100%; background: #22c55e;">Confirm Assignment</button>
-                    </form>
-                    <p style="font-size: 11px; color: #999; margin-top: 10px; text-align: center;">Drivers must be ONLINE to receive new orders.</p>
+                    <h2 style="font-size: 14px; text-transform: uppercase; margin-bottom: 1rem;">Status</h2>
+                    <p style="font-size: 18px; font-weight: 700; margin-bottom: 1rem;"><?= htmlspecialchars($order['Order_Status'] ?? 'PENDING') ?></p>
+                    <p style="font-size: 13px; color: #666; margin-bottom: 8px;"><strong>Placed:</strong> <?= date('F j, Y g:i A', strtotime($order['Order_PlacedAt'] ?? 'now')) ?></p>
+                    <p style="font-size: 16px;"><strong>Total:</strong> $<?= number_format($order['Order_TotalAmnt'] ?? 0, 2) ?></p>
+                    <?php if ($shipment): ?>
+                        <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #eee;">
+                        <p style="font-size: 12px; color: #666;"><strong>Shipment:</strong> <?= htmlspecialchars($shipment['Ship_Status'] ?? '') ?></p>
+                        <?php if (!empty($shipment['Ship_ProofImg'])): ?>
+                            <p style="font-size: 12px;"><a href="../<?= htmlspecialchars($shipment['Ship_ProofImg']) ?>" target="_blank">View proof of delivery</a></p>
+                        <?php endif; ?>
+                    <?php endif; ?>
                 </div>
-            </div> <!-- End Right Column -->
-        </div> <!-- End Grid Wrapper -->
-
+            </div>
+        </div>
+    <?php elseif ($order_id): ?>
+        <div class="card"><p>Order not found.</p></div>
     <?php else: ?>
-        <!-- LIST VIEW -->
         <div class="card">
             <table class="order-table">
                 <thead>
@@ -197,16 +173,16 @@ $online_drivers = $conn->query("SELECT Driv_Id, Driv_FirstName, Driv_LastName, D
                     </tr>
                 </thead>
                 <tbody>
-                    <?php while($row = $orders->fetch_assoc()): ?>
+                    <?php foreach ($orders_list as $row): ?>
                     <tr>
-                        <td>#<?= $row['Order_Id'] ?></td>
-                        <td><?= htmlspecialchars($row['Cust_Firstname'] . ' ' . $row['Cust_Lastname']) ?></td>
-                        <td style="color: #888;"><?= date('M j, Y', strtotime($row['Order_PlacedAt'])) ?></td>
-                        <td style="font-weight: 600;">$<?= number_format($row['Order_TotalAmnt'], 2) ?></td>
-                        <td><span class="badge"><?= $row['Order_Status'] ?></span></td>
-                        <td><a href="orders.php?id=<?= $row['Order_Id'] ?>" style="color: #000; font-weight: 600; text-decoration: underline;">Manage</a></td>
+                        <td>#<?= htmlspecialchars($row['Order_Id'] ?? '') ?></td>
+                        <td><?= htmlspecialchars(trim(($row['Cust_Firstname'] ?? '') . ' ' . ($row['Cust_Lastname'] ?? ''))) ?></td>
+                        <td style="color: #888;"><?= date('M j, Y', strtotime($row['Order_PlacedAt'] ?? 'now')) ?></td>
+                        <td style="font-weight: 600;">$<?= number_format($row['Order_TotalAmnt'] ?? 0, 2) ?></td>
+                        <td><span class="badge"><?= htmlspecialchars($row['Order_Status'] ?? '') ?></span></td>
+                        <td><a href="orders.php?id=<?= urlencode($row['Order_Id'] ?? '') ?>" style="color: #000; font-weight: 600; text-decoration: underline;">View</a></td>
                     </tr>
-                    <?php endwhile; ?>
+                    <?php endforeach; ?>
                 </tbody>
             </table>
         </div>

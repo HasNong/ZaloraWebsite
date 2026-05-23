@@ -1,0 +1,61 @@
+.app-details-box {
+            font-size: 11px;
+            background: var(--background);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            padding: 10px 14px;
+            margin-top: 6px;
+            line-height: 1.5;
+            color: var(--text-muted);
+        }
+        .btn-action {
+            border: none;
+            padding: 8px 15px;
+            border-radius: var(--radius-sm);
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            transition: var(--transition);
+        }
+        .btn-approve {
+            background: var(--accent-green-bg);
+            color: var(--accent-green-text);
+            border: 1px solid rgba(0, 0, 0, 0.02);
+        }
+        .btn-approve:hover { 
+            opacity: 0.85;
+            transform: translateY(-1px);
+        }
+        .btn-reject {
+            background: var(--accent-red-bg);
+            color: var(--accent-red-text);
+            border: 1px solid rgba(0, 0, 0, 0.02);
+        }
+        .btn-reject:hover { 
+            opacity: 0.85;
+            transform: translateY(-1px);
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: var(--radius-sm);
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .badge-pending { background: rgba(241, 196, 15, 0.1); color: #d4ac0d; }
+        .badge-approved { background: var(--accent-green-bg); color: var(--accent-green-text); }
+        .badge-rejected { background: var(--accent-red-bg); color: var(--accent-red-text); }
+ 
+        .alert-box {
+            padding: 12px 20px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            margin-bottom: 25px;
+            font-weight: 600;
+        }
+        .alert-success { background: var(--accent-green-bg); color: var(--accent-green-text); border: 1px solid rgba(0, 0, 0, 0.02); }
+        .alert-error { background: var(--accent-red-bg); color: var(--accent-red-text); border: 1px solid rgba(0, 0, 0, 0.02); }

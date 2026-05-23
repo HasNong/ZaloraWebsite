@@ -10,16 +10,35 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'driver') {
 $driver_id = $_SESSION['user_id'];
 
 // Fetch Completed Deliveries (DELIVERED)
-$query = "SELECT s.*, o.Order_TotalAmnt, a.Addrs_Street, a.Addrs_City, a.Addrs_RcpntName
-          FROM shipment s
-          JOIN ORDERS o ON s.Order_Id = o.Order_Id
-          JOIN ADDRESS a ON o.Addrs_Id = a.Addrs_id
-          WHERE s.Driv_Id = ? AND s.Ship_Status = 'DELIVERED'
-          ORDER BY s.Ship_DeliveredAt DESC";
-$stmt = $conn->prepare($query);
-$stmt->bind_param("i", $driver_id);
-$stmt->execute();
-$history = $stmt->get_result();
+$shipments = $database->getReference('shipment')->orderByChild('Driv_Id')->equalTo($driver_id)->getSnapshot()->getValue() ?: [];
+$history_data = [];
+
+foreach ($shipments as $ship) {
+    if (($ship['Ship_Status'] ?? '') === 'DELIVERED') {
+        $order_id = $ship['Order_Id'];
+        
+        $orderRef = $database->getReference('orders')->orderByChild('Order_Id')->equalTo($order_id)->getSnapshot()->getValue();
+        if ($orderRef) {
+            $order = current($orderRef);
+            $addrs_id = $order['Addrs_Id'] ?? $order['Addrs_id'] ?? null;
+            
+            $addrRef = $database->getReference('address')->orderByChild('Addrs_id')->equalTo($addrs_id)->getSnapshot()->getValue();
+            $address = $addrRef ? current($addrRef) : [];
+            
+            $history_data[] = [
+                'Ship_DeliveredAt' => $ship['Ship_DeliveredAt'] ?? '',
+                'Order_Id' => $order_id,
+                'Addrs_Street' => $address['Addrs_Street'] ?? 'Unknown Street',
+                'Addrs_RcpntName' => $address['Addrs_RcpntName'] ?? 'Unknown'
+            ];
+        }
+    }
+}
+
+// Sort by delivery date descending
+usort($history_data, function($a, $b) {
+    return strtotime($b['Ship_DeliveredAt']) - strtotime($a['Ship_DeliveredAt']);
+});
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -28,33 +47,7 @@ $history = $stmt->get_result();
     <title>Zalora Driver — History</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/seller.css">
-    <style>
-        .history-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 30px; }
-        .history-count { font-size: 11px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.1em; }
-        
-        .history-table { 
-            width: 100%; 
-            border-collapse: collapse; 
-            background: var(--white); 
-            border: 1px solid var(--border); 
-            border-radius: var(--radius-md);
-            overflow: hidden;
-            box-shadow: var(--shadow-sm);
-        }
-        .history-table th { 
-            text-align: left; 
-            padding: 20px; 
-            font-size: 10px; 
-            font-weight: 700; 
-            text-transform: uppercase; 
-            letter-spacing: 0.1em; 
-            color: var(--text-light); 
-            border-bottom: 1px solid var(--border); 
-        }
-        .history-table td { padding: 25px 20px; border-bottom: 1px solid var(--border); font-size: 13px; }
-        .status-check { color: var(--accent-green-text); font-weight: 700; font-size: 10px; text-transform: uppercase; display: flex; align-items: center; gap: 5px; }
-        .payout-tag { color: var(--accent-green-text); font-weight: 700; }
-    </style>
+    <link rel="stylesheet" href="../assets/css/driver.css?v=<?= time() ?>">
 </head>
 <body>
 
@@ -65,7 +58,7 @@ $history = $stmt->get_result();
         
         <header class="history-header">
             <h1 class="page-title">DELIVERY HISTORY</h1>
-            <span class="history-count"><?= $history->num_rows ?> COMPLETED</span>
+            <span class="history-count"><?= count($history_data) ?> COMPLETED</span>
         </header>
 
         <table class="history-table">
@@ -80,8 +73,8 @@ $history = $stmt->get_result();
                 </tr>
             </thead>
             <tbody>
-                <?php if ($history->num_rows > 0): ?>
-                    <?php while($row = $history->fetch_assoc()): ?>
+                <?php if (count($history_data) > 0): ?>
+                    <?php foreach($history_data as $row): ?>
                     <tr>
                         <td><?= date('M d, Y • H:i', strtotime($row['Ship_DeliveredAt'])) ?></td>
                         <td><span style="font-weight:700;">#<?= $row['Order_Id'] ?></span></td>
@@ -95,7 +88,7 @@ $history = $stmt->get_result();
                             </span>
                         </td>
                     </tr>
-                    <?php endwhile; ?>
+                    <?php endforeach; ?>
                 <?php else: ?>
                     <tr>
                         <td colspan="6" style="text-align:center; padding: 100px; color: #999;">

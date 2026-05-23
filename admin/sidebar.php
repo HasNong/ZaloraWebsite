@@ -6,7 +6,7 @@
         <li><a href="applications.php" class="<?= basename($_SERVER['PHP_SELF']) == 'applications.php' ? 'active' : '' ?>">Role Applications</a></li>
         <li><a href="drivers.php" class="<?= basename($_SERVER['PHP_SELF']) == 'drivers.php' ? 'active' : '' ?>">Driver Management</a></li>
         <li><a href="catalog.php" class="<?= basename($_SERVER['PHP_SELF']) == 'catalog.php' ? 'active' : '' ?>">Catalog Management</a></li>
-        <li><a href="orders.php" class="<?= basename($_SERVER['PHP_SELF']) == 'orders.php' ? 'active' : '' ?>">Order Management</a></li>
+        <li><a href="orders.php" class="<?= basename($_SERVER['PHP_SELF']) == 'orders.php' ? 'active' : '' ?>">Orders Overview</a></li>
         <li><a href="promotions.php" class="<?= basename($_SERVER['PHP_SELF']) == 'promotions.php' ? 'active' : '' ?>">Promotions</a></li>
         <li><a href="support.php" class="<?= basename($_SERVER['PHP_SELF']) == 'support.php' ? 'active' : '' ?>">Support Tickets</a></li>
         <li><a href="returns.php" class="<?= basename($_SERVER['PHP_SELF']) == 'returns.php' ? 'active' : '' ?>">Return Management</a></li>

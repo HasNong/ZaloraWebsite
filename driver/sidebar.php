@@ -1,8 +1,12 @@
 <?php
 $current_page = basename($_SERVER['PHP_SELF']);
 $driver_id = $_SESSION['user_id'];
-$res_status = $conn->query("SELECT Driv_IsActive FROM driver WHERE Driv_Id = $driver_id");
-$is_online = $res_status->fetch_assoc()['Driv_IsActive'] ?? 0;
+$drivers = $database->getReference('driver')->orderByChild('Driv_Id')->equalTo($driver_id)->getSnapshot()->getValue();
+$is_online = 0;
+if ($drivers) {
+    $driver_data = current($drivers);
+    $is_online = $driver_data['Driv_IsActive'] ?? 0;
+}
 ?>
 <aside class="sidebar">
     <div class="sidebar-header">

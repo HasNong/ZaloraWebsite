@@ -471,3 +471,64 @@
             .cart-item { grid-template-columns: 80px 1fr; }
             .item-price { grid-column: 2; }
         }
+
+* { margin: 0; padding: 0; box-sizing: border-box;}
+
+body { font-family: 'Montserrat', sans-serif; background: #fff; color: #000;}
+
+/* SIMPLIFIED CHECKOUT HEADER */
+        .checkout-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; border-bottom: 1px solid #eaeaea; background: #fff;}
+
+.checkout-logo { font-size: 20px; font-weight: 400; letter-spacing: 0.4em; text-decoration: none; color: #000; margin-left: 20%;}
+
+.header-actions { display: flex; gap: 20px; align-items: center;}
+
+.header-icon { color: #000; position: relative; text-decoration: none; display: flex; align-items: center;}
+
+.badge-count { position: absolute; top: -6px; right: -8px; background: #c0392b; color: #fff; font-size: 9px; padding: 2px 5px; border-radius: 10px; font-weight: 700;}
+
+/* EMPTY STATE STYLES */
+        .empty-bag-wrapper { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 20px 60px; text-align: center;}
+
+.empty-icon-circle { width: 140px; height: 140px; background: #f6f6f6; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 25px; position: relative;}
+
+.empty-icon-circle svg { color: #555;}
+
+.sparkle-1 { position: absolute; top: 15px; left: 15px; color: #ccc;}
+
+.sparkle-2 { position: absolute; bottom: 25px; right: 10px; color: #aaa;}
+
+.sparkle-3 { position: absolute; bottom: 15px; right: 25px; color: #ccc;}
+
+.empty-title { font-size: 15px; font-weight: 800; margin-bottom: 6px; color: #111;}
+
+.empty-subtitle { font-size: 11px; color: #666; margin-bottom: 25px;}
+
+.btn-go-shopping { display: inline-block; padding: 10px 24px; border: 1px solid #000; border-radius: 4px; color: #000; text-decoration: none; font-size: 11px; font-weight: 600; transition: 0.2s;}
+
+.btn-go-shopping:hover { background: #000; color: #fff;}
+
+/* RECOMMENDATIONS SECTION */
+        .rec-section { max-width: 1200px; margin: 0 auto 100px; background: #fbfbfb; border-radius: 12px; padding: 25px;}
+
+.rec-title { font-size: 13px; font-weight: 800; color: #333; margin-bottom: 20px; text-align: left;}
+
+.rec-row { display: flex; gap: 15px; overflow-x: auto; padding-bottom: 10px;}
+
+.rec-row::-webkit-scrollbar { height: 4px;}
+
+.rec-row::-webkit-scrollbar-thumb { background: #ddd; border-radius: 4px;}
+
+.rec-item { min-width: 180px; flex: 1; background: #fff; border-radius: 8px; overflow: hidden; position: relative; padding-bottom: 15px; display: flex; flex-direction: column; box-shadow: 0 2px 5px rgba(0,0,0,0.02);}
+
+.rec-img-container { background: #f0f0f0; aspect-ratio: 1; margin-bottom: 10px; overflow: hidden; display: flex; align-items: center; justify-content: center;}
+
+.rec-img-container img { width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply;}
+
+.rec-brand { font-size: 10px; font-weight: 800; padding: 0 12px; color: #111; text-transform: uppercase;}
+
+.btn-heart { position: absolute; bottom: 12px; right: 12px; background: none; border: none; cursor: pointer; color: #999; display: flex; align-items: center; justify-content: center;}
+
+.btn-heart:hover { color: #000;}
+
+.chat-widget { position: fixed; bottom: 30px; right: 30px; width: 50px; height: 50px; background: #222; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 20px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.2);}

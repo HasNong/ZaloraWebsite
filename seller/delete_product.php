@@ -9,26 +9,27 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'seller') {
 }
 
 $seller_id = $_SESSION['user_id'];
-$prod_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+$prod_id = $_GET['id'] ?? '';
 
-if ($prod_id > 0) {
+if (!empty($prod_id)) {
     // 1. Verify ownership
-    $check = $conn->prepare("SELECT Prod_Id FROM PRODUCT WHERE Prod_Id = ? AND Sell_Id = ?");
-    $check->bind_param("ii", $prod_id, $seller_id);
-    $check->execute();
-    if ($check->get_result()->num_rows > 0) {
+    $productRef = $database->getReference("product/$prod_id")->getSnapshot()->getValue();
+    
+    if ($productRef && ($productRef['Sell_Id'] ?? '') == $seller_id) {
         
         // 2. Optional: Delete image files from disk
-        $img_res = $conn->query("SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = $prod_id");
-        while ($img = $img_res->fetch_assoc()) {
-            $full_path = '../' . $img['PImg_ImgUrl'];
-            if (file_exists($full_path) && is_file($full_path)) {
-                unlink($full_path);
+        $imagesRef = $database->getReference('product_image')->orderByChild('Prod_Id')->equalTo($prod_id)->getSnapshot()->getValue() ?: [];
+        foreach ($imagesRef as $imgId => $img) {
+            if (!empty($img['PImg_ImgUrl'])) {
+                $full_path = '../' . $img['PImg_ImgUrl'];
+                if (file_exists($full_path) && is_file($full_path)) {
+                    unlink($full_path);
+                }
             }
         }
 
         // 3. Perform soft delete to avoid breaking order history constraints
-        $conn->query("UPDATE PRODUCT SET Prod_IsActive = 2 WHERE Prod_Id = $prod_id");
+        $database->getReference("product/$prod_id")->update(['Prod_IsActive' => 2]);
 
         $_SESSION['success_msg'] = "Product has been successfully removed.";
     }

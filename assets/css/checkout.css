@@ -1,0 +1,18 @@
+body { background: #f9f9f9; font-family: 'Montserrat', sans-serif; }
+        .checkout-container { max-width: 900px; margin: 50px auto; display: grid; grid-template-columns: 1.5fr 1fr; gap: 30px; padding: 0 20px; }
+        .card { background: #fff; padding: 30px; border: 1px solid #eee; }
+        .section-title { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 25px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        .wallet-box { background: #000; color: #fff; padding: 20px; margin-bottom: 20px; }
+        .wallet-label { font-size: 10px; text-transform: uppercase; opacity: 0.7; }
+        .wallet-balance { font-size: 24px; font-weight: 700; margin-top: 5px; }
+        .summary-row { display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 13px; }
+        .total-row { display: flex; justify-content: space-between; margin-top: 20px; padding-top: 20px; border-top: 2px solid #eee; font-weight: 700; font-size: 18px; }
+        .btn-order { width: 100%; background: #000; color: #fff; border: none; padding: 18px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer; margin-top: 20px; }
+        .btn-order:hover { background: #333; }
+        .error-msg { background: #fff0f0; color: #d00; padding: 15px; font-size: 12px; margin-bottom: 20px; border-left: 4px solid #d00; }
+        .nav-logo { font-size: 24px; font-weight: 700; text-align: center; display: block; margin: 30px 0; text-decoration: none; color: #000; letter-spacing: 0.2em; }
+        
+        .promo-input-group { display: flex; gap: 10px; margin-top: 15px; padding-top: 15px; border-top: 1px dashed #eee; }
+        .promo-input { flex: 1; padding: 10px; border: 1px solid #ddd; font-family: inherit; font-size: 12px; }
+        .btn-apply { background: #eee; border: none; padding: 0 15px; font-weight: 700; font-size: 10px; text-transform: uppercase; cursor: pointer; }
+        .promo-msg { font-size: 10px; margin-top: 5px; display: none; }

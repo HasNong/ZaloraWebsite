@@ -1,0 +1,13 @@
+.returns-container { padding: 40px; }
+        .page-title { font-size: 24px; font-weight: 700; text-transform: uppercase; margin-bottom: 30px; letter-spacing: 0.05em; }
+        .return-table { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
+        .return-table th { background: #000; color: #fff; text-transform: uppercase; font-size: 10px; letter-spacing: 0.1em; padding: 20px; text-align: left; }
+        .return-table td { padding: 20px; border-bottom: 1px solid #eee; font-size: 13px; vertical-align: top; }
+        .status-badge { padding: 5px 10px; font-size: 10px; font-weight: 700; border-radius: 3px; text-transform: uppercase; }
+        .status-pending { background: #fff4e5; color: #b7791f; }
+        .status-approved { background: #e6fffa; color: #2c7a7b; }
+        .status-rejected { background: #fff5f5; color: #c53030; }
+        .btn-action { padding: 8px 15px; font-size: 10px; font-weight: 700; border: none; cursor: pointer; text-transform: uppercase; }
+        .btn-approve { background: #000; color: #fff; }
+        .btn-reject { background: #fff; color: #000; border: 1px solid #000; }
+        .evidence-img { width: 80px; height: 80px; object-fit: cover; border: 1px solid #eee; cursor: pointer; }

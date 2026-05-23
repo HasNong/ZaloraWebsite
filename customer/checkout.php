@@ -54,11 +54,11 @@ $shipping_fee = ($subtotal > 100) ? 0 : 5.00;
 $total = $subtotal + $tax + $shipping_fee;
 
 // 2. Fetch Customer Balance & Address
-$custSnapshot = $database->getReference('CUSTOMER')->orderByChild('Cust_Id')->equalTo($cust_id)->getSnapshot()->getValue();
+$custSnapshot = $database->getReference('customer')->orderByChild('Cust_Id')->equalTo($cust_id)->getSnapshot()->getValue();
 $cust = $custSnapshot ? reset($custSnapshot) : null;
 $custKey = $custSnapshot ? key($custSnapshot) : null;
 
-$addrSnapshot = $database->getReference('ADDRESS')->orderByChild('Cust_Id')->equalTo($cust_id)->getSnapshot()->getValue();
+$addrSnapshot = $database->getReference('address')->orderByChild('Cust_Id')->equalTo($cust_id)->getSnapshot()->getValue();
 $defaultAddr = null;
 if ($addrSnapshot) {
     foreach ($addrSnapshot as $a) {
@@ -84,7 +84,7 @@ if (isset($_POST['place_order'])) {
             if ($defaultAddr) {
                 $addr_id = $defaultAddr['Addrs_id'] ?? '';
             } else {
-                $newAddrRef = $database->getReference('ADDRESS')->push();
+                $newAddrRef = $database->getReference('address')->push();
                 $addr_id = $newAddrRef->getKey();
                 $full_name = ($cust['Cust_Firstname'] ?? '') . ' ' . ($cust['Cust_Lastname'] ?? '');
                 $newAddrRef->set([
@@ -144,11 +144,11 @@ if (isset($_POST['place_order'])) {
             // C. Deduct Balance
             if ($custKey) {
                 $newBalance = floatval($cust['Cust_Balance'] ?? 0) - $final_total;
-                $database->getReference('CUSTOMER')->getChild($custKey)->update(['Cust_Balance' => $newBalance]);
+                $database->getReference('customer')->getChild($custKey)->update(['Cust_Balance' => $newBalance]);
             }
 
             // D. Create Order
-            $orderRef = $database->getReference('ORDERS')->push();
+            $orderRef = $database->getReference('orders')->push();
             $order_id = $orderRef->getKey();
             $orderRef->set([
                 'Order_Id' => $order_id,
@@ -174,7 +174,7 @@ if (isset($_POST['place_order'])) {
 
             // E. Record Coupon Usage
             if ($applied_coupon_key) {
-                $oCoupRef = $database->getReference('ORDER_COUPON')->push();
+                $oCoupRef = $database->getReference('order_coupon')->push();
                 $oCoupRef->set([
                     'OCoup_Id' => $oCoupRef->getKey(),
                     'Order_Id' => $order_id,
@@ -217,7 +217,7 @@ if (isset($_POST['place_order'])) {
                     }
                     
                     $sub = $qty * $basePrice;
-                    $odItmRef = $database->getReference('ORDER_ITEM')->push();
+                    $odItmRef = $database->getReference('order_item')->push();
                     $odItmRef->set([
                         'OdItm_Id' => $odItmRef->getKey(),
                         'Order_Id' => $order_id,
@@ -247,26 +247,7 @@ if (isset($_POST['place_order'])) {
     <title>ZALORA — Checkout</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
     <link rel="stylesheet" href="../assets/css/global.css"/>
-    <style>
-        body { background: #f9f9f9; font-family: 'Montserrat', sans-serif; }
-        .checkout-container { max-width: 900px; margin: 50px auto; display: grid; grid-template-columns: 1.5fr 1fr; gap: 30px; padding: 0 20px; }
-        .card { background: #fff; padding: 30px; border: 1px solid #eee; }
-        .section-title { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 25px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
-        .wallet-box { background: #000; color: #fff; padding: 20px; margin-bottom: 20px; }
-        .wallet-label { font-size: 10px; text-transform: uppercase; opacity: 0.7; }
-        .wallet-balance { font-size: 24px; font-weight: 700; margin-top: 5px; }
-        .summary-row { display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 13px; }
-        .total-row { display: flex; justify-content: space-between; margin-top: 20px; padding-top: 20px; border-top: 2px solid #eee; font-weight: 700; font-size: 18px; }
-        .btn-order { width: 100%; background: #000; color: #fff; border: none; padding: 18px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer; margin-top: 20px; }
-        .btn-order:hover { background: #333; }
-        .error-msg { background: #fff0f0; color: #d00; padding: 15px; font-size: 12px; margin-bottom: 20px; border-left: 4px solid #d00; }
-        .nav-logo { font-size: 24px; font-weight: 700; text-align: center; display: block; margin: 30px 0; text-decoration: none; color: #000; letter-spacing: 0.2em; }
-        
-        .promo-input-group { display: flex; gap: 10px; margin-top: 15px; padding-top: 15px; border-top: 1px dashed #eee; }
-        .promo-input { flex: 1; padding: 10px; border: 1px solid #ddd; font-family: inherit; font-size: 12px; }
-        .btn-apply { background: #eee; border: none; padding: 0 15px; font-weight: 700; font-size: 10px; text-transform: uppercase; cursor: pointer; }
-        .promo-msg { font-size: 10px; margin-top: 5px; display: none; }
-    </style>
+    <link rel="stylesheet" href="../assets/css/checkout.css?v=<?= time() ?>">
 </head>
 <body>
 

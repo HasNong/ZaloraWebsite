@@ -11,9 +11,10 @@ if (!isset($_SESSION['user_id'])) {
 $customer_id = $_SESSION['user_id'];
 
 // 1. Fetch REAL Customer Data
-$custRef = $database->getReference('CUSTOMER')->orderByChild('Cust_Id')->equalTo($customer_id)->getSnapshot()->getValue();
+$custRef = $database->getReference('customer')->orderByChild('Cust_Id')->equalTo($customer_id)->getSnapshot()->getValue();
 $cust_data = $custRef ? reset($custRef) : null;
 $cust_key = $custRef ? key($custRef) : null;
+$customer_node = 'customer';
 
 $user = [
     "name"            => ($cust_data['Cust_Firstname'] ?? '') . ' ' . ($cust_data['Cust_Lastname'] ?? ''),
@@ -25,7 +26,7 @@ $msg_type = $_GET['type'] ?? '';
 $active_tab = $_GET['tab'] ?? 'account';
 
 // Fetch Address first so we can use it in both logic and view
-$addrRef = $database->getReference('ADDRESS')->orderByChild('Cust_Id')->equalTo($customer_id)->getSnapshot()->getValue();
+$addrRef = $database->getReference('address')->orderByChild('Cust_Id')->equalTo($customer_id)->getSnapshot()->getValue() ?: [];
 $address = null;
 $addr_key = null;
 if ($addrRef) {
@@ -53,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         try {
             if ($address) {
                 // Update
-                $database->getReference('ADDRESS')->getChild($addr_key)->update([
+                $database->getReference('address')->getChild($addr_key)->update([
                     'Addrs_RcpntName' => $rcp_name,
                     'Addrs_Number' => $phone,
                     'Addrs_UnitNo' => $unit_no,
@@ -67,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $msg_type = "success";
             } else {
                 // Insert
-                $newAddr = $database->getReference('ADDRESS')->push();
+                $newAddr = $database->getReference('address')->push();
                 $newAddr->set([
                     'Addrs_id' => $newAddr->getKey(),
                     'Cust_Id' => $customer_id,
@@ -120,7 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             
             if ($cust_key) {
                 try {
-                    $database->getReference('CUSTOMER')->getChild($cust_key)->update($updateData);
+                    $database->getReference($customer_node)->getChild($cust_key)->update($updateData);
                     $msg = "Profile details updated successfully!";
                     $msg_type = "success";
                 } catch (Exception $e) {
@@ -136,6 +137,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         exit;
     }
 }
+
+// Handle Wallet Top-up
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'topup_wallet') {
+    $amount = floatval($_POST['amount'] ?? 0);
+    if ($amount > 0 && $cust_key) {
+        $current_balance = floatval($cust_data['Cust_Balance'] ?? 0);
+        $new_balance = $current_balance + $amount;
+        
+        try {
+            $database->getReference($customer_node)->getChild($cust_key)->update([
+                'Cust_Balance' => $new_balance
+            ]);
+            $msg = "Successfully topped up $".number_format($amount, 2)."!";
+            $msg_type = "success";
+        } catch (Exception $e) {
+            $msg = "Error topping up wallet: " . $e->getMessage();
+            $msg_type = "error";
+        }
+        header("Location: profile.php?tab=wallet&msg=" . urlencode($msg) . "&type=" . $msg_type);
+        exit;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -145,407 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     <title>ZALORA — My Profile</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&family=Cormorant+Garamond:ital,wght@1,600&display=swap" rel="stylesheet"/>
     <link rel="stylesheet" href="../assets/css/global.css?v=<?= time() ?>"/>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Montserrat', sans-serif; background: #fff; color: #000; overflow-x: hidden; display: flex; flex-direction: column; min-height: 100vh; }
-        
-        /* HEADER STYLES */
-        .top-promo-bar { background: #fff; border-bottom: 1px solid #eee; padding: 10px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
-        .promo-container { max-width: 1400px; margin: 0 auto; display: flex; justify-content: space-around; }
-        .promo-item { color: #000; text-decoration: none; display: flex; align-items: center; gap: 8px; }
-        header { background: #fff; position: sticky; top: 0; z-index: 1000; border-bottom: 1px solid #eee; }
-        .main-header { max-width: 1400px; margin: 0 auto; padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; }
-        .logo { font-size: 24px; font-weight: 400; letter-spacing: 0.3em; text-decoration: none; color: #000; }
-        .search-bar-wrap { flex: 1; max-width: 500px; margin: 0 40px; position: relative; }
-        .search-input { width: 100%; padding: 12px 25px; border: 1px solid #ddd; border-radius: 100px; font-size: 13px; background: #f5f5f5; outline: none; }
-        .search-icon-btn { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); background: #000; color: #fff; border: none; width: 34px; height: 34px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-        .header-actions { display: flex; gap: 20px; }
-        .header-action-item { color: #000; text-decoration: none; font-size: 13px; display: flex; align-items: center; gap: 5px; }
-        .nav-bar { border-bottom: 1px solid #eee; }
-        .nav-container { max-width: 1400px; margin: 0 auto; display: flex; justify-content: center; gap: 40px; padding: 15px 0; }
-        .nav-item { font-size: 11px; font-weight: 700; text-transform: uppercase; text-decoration: none; color: #000; letter-spacing: 0.1em; }
-        .badge-count { position: absolute; top: -8px; right: -12px; background: #000; color: #fff; font-size: 9px; padding: 2px 6px; border-radius: 10px; }
-
-        /* LAYOUT */
-        .page-wrapper {
-            max-width: 1200px;
-            margin: 40px auto;
-            width: 100%;
-            display: flex;
-            gap: 40px;
-            padding: 0 20px;
-            flex: 1;
-        }
-
-        /* SIDEBAR */
-        .sidebar {
-            width: 280px;
-            background: #f8f8f8;
-            border-radius: 12px;
-            padding: 25px 0;
-            flex-shrink: 0;
-            height: fit-content;
-        }
-        .sidebar h4 {
-            font-size: 12px;
-            font-weight: 800;
-            margin-bottom: 15px;
-            padding: 0 25px;
-            text-transform: uppercase;
-        }
-        .sidebar-menu {
-            list-style: none;
-        }
-        .sidebar-menu li a {
-            display: block;
-            padding: 15px 25px;
-            color: #333;
-            text-decoration: none;
-            font-size: 13px;
-            font-weight: 500;
-            transition: all 0.2s;
-        }
-        .sidebar-menu li a:hover {
-            background: #eee;
-        }
-        .sidebar-menu li a.active {
-            background: #444;
-            color: #fff;
-        }
-
-        /* MAIN CONTENT CARDS */
-        .content-area {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 30px;
-        }
-        
-        .profile-card {
-            border: 1px solid #eaeaea;
-            border-radius: 16px;
-            padding: 30px 40px;
-            background: #fff;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.02);
-        }
-
-        .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 30px;
-        }
-
-        .card-title {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-size: 16px;
-            font-weight: 600;
-        }
-
-        .card-action-link {
-            font-size: 13px;
-            color: #000;
-            text-decoration: underline;
-            cursor: pointer;
-        }
-
-        /* PERSONAL DETAILS */
-        .details-grid {
-            display: flex;
-            flex-direction: column;
-            gap: 25px;
-        }
-        .detail-block {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-        }
-        .detail-label {
-            font-size: 13px;
-            font-weight: 600;
-            color: #000;
-        }
-        .detail-value {
-            font-size: 13px;
-            color: #666;
-        }
-
-        /* SAVED ADDRESSES */
-        .address-box {
-            border: 1px solid #eaeaea;
-            border-radius: 12px;
-            padding: 25px;
-            position: relative;
-        }
-        .address-name {
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 12px;
-        }
-        .btn-edit-pencil {
-            position: absolute;
-            top: 25px;
-            right: 25px;
-            background: none;
-            border: none;
-            cursor: pointer;
-            color: #666;
-        }
-        .tag-row {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        .addr-tag {
-            background: #eafaf1;
-            color: #2b8a73; /* Teal color from screenshot */
-            padding: 5px 10px;
-            border-radius: 4px;
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-        }
-        .address-text {
-            font-size: 13px;
-            color: #666;
-            line-height: 1.8;
-        }
-
-        /* Modal Overlay */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.4);
-            z-index: 9999;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            backdrop-filter: blur(4px);
-            transition: all 0.3s ease;
-        }
-        .modal-overlay.active {
-            display: flex;
-        }
-        .modal-card {
-            background: #fff;
-            width: 100%;
-            max-width: 600px;
-            border-radius: 12px;
-            padding: 30px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
-            animation: slideDown 0.3s ease;
-        }
-        @keyframes slideDown {
-            from { transform: translateY(-20px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 15px;
-            margin-bottom: 20px;
-        }
-        .modal-header h3 {
-            font-size: 14px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-        .close-btn {
-            background: none;
-            border: none;
-            font-size: 24px;
-            cursor: pointer;
-            color: #888;
-            line-height: 1;
-        }
-        .close-btn:hover {
-            color: #000;
-        }
-        .form-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 15px;
-        }
-        .form-group {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        .form-group label {
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            color: #333;
-        }
-        .form-control {
-            padding: 10px 15px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-family: inherit;
-            font-size: 13px;
-            outline: none;
-            background: #fff;
-        }
-        .form-control:focus {
-            border-color: #000;
-        }
-        .btn-cancel {
-            background: #eee;
-            color: #000;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            cursor: pointer;
-            transition: 0.2s;
-        }
-        .btn-cancel:hover {
-            background: #ddd;
-        }
-        .btn-save {
-            background: #000;
-            color: #fff;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            cursor: pointer;
-            transition: 0.2s;
-        }
-        .btn-save:hover {
-            background: #333;
-        }
-
-        .alert-toast {
-            background: #000;
-            color: #fff;
-            padding: 15px 30px;
-            font-size: 13px;
-            font-weight: 600;
-            margin-bottom: 20px;
-            border-radius: 6px;
-        }
-
-        /* FOOTER LISTS */
-        .simple-footer {
-            max-width: 1000px;
-            width: 100%;
-            margin: 60px auto 40px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 40px;
-        }
-        .footer-block h4 {
-            font-size: 12px;
-            font-weight: 800;
-            margin-bottom: 20px;
-        }
-        .footer-list {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 15px;
-            list-style: none;
-        }
-        .footer-list li a {
-            color: #666;
-            text-decoration: none;
-            font-size: 11px;
-        }
-
-        /* FLOATING Z */
-        .floating-actions {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            z-index: 2000;
-        }
-        .float-btn-z {
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            background: #333;
-            color: #fff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            border: none;
-            font-weight: 800;
-            font-size: 20px;
-        }
-
-        /* Order Tracking styling */
-        .order-card {
-            border: 1px solid #eaeaea;
-            border-radius: 12px;
-            padding: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .order-card:hover {
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-            border-color: #ccc;
-        }
-        .order-meta h5 {
-            margin: 0 0 5px 0;
-            font-size: 14px;
-            font-weight: 700;
-        }
-        .order-meta p {
-            margin: 0 0 4px 0;
-            font-size: 12px;
-            color: #666;
-        }
-        .order-badge {
-            display: inline-block;
-            padding: 4px 10px;
-            font-size: 9px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            border-radius: 4px;
-        }
-        .order-badge.pending { background: #fff8e1; color: #b78103; }
-        .order-badge.confirmed { background: #e3f2fd; color: #0d47a1; }
-        .order-badge.packed { background: #efebe9; color: #4e342e; }
-        .order-badge.shipped { background: #e0f2f1; color: #004d40; }
-        .order-badge.delivered { background: #e8f5e9; color: #1b5e20; }
-        .order-badge.cancelled { background: #ffebee; color: #c62828; }
-        .order-badge.returned { background: #f3e5f5; color: #4a148c; }
-        .btn-track {
-            background: #000;
-            color: #fff;
-            padding: 10px 18px;
-            text-transform: uppercase;
-            font-size: 10px;
-            font-weight: 700;
-            text-decoration: none;
-            letter-spacing: 0.05em;
-            transition: all 0.2s;
-            border-radius: 6px;
-            display: inline-block;
-        }
-        .btn-track:hover {
-            background: #333;
-        }
-    </style>
+    <link rel="stylesheet" href="../assets/css/profile.css?v=<?= time() ?>"/>
 </head>
 <body>
 
@@ -615,7 +238,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         <h4>MY ACCOUNT</h4>
         <ul class="sidebar-menu">
             <li><a href="profile.php" class="<?= $active_tab === 'account' ? 'active' : '' ?>">Account information</a></li>
-            <li><a href="#">My Wallet</a></li>
+            <li><a href="profile.php?tab=wallet" class="<?= $active_tab === 'wallet' ? 'active' : '' ?>">My Wallet</a></li>
             <li><a href="#">My Cashback</a></li>
             <li><a href="#">My ZVIP</a></li>
             <li><a href="profile.php?tab=orders" class="<?= $active_tab === 'orders' ? 'active' : '' ?>">Orders & Tracking</a></li>
@@ -632,7 +255,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
     <!-- CONTENT -->
     <main class="content-area">
-        <?php if ($active_tab === 'orders'): ?>
+        <?php if ($active_tab === 'wallet'): ?>
+            <div class="profile-card" style="background: linear-gradient(135deg, #000, #333); color: #fff; padding: 40px; border-radius: 12px; position: relative; overflow: hidden;">
+                <div style="position: absolute; top: -50px; right: -50px; width: 200px; height: 200px; background: rgba(255,255,255,0.05); border-radius: 50%;"></div>
+                <div style="position: absolute; bottom: -30px; left: -30px; width: 100px; height: 100px; background: rgba(255,255,255,0.05); border-radius: 50%;"></div>
+                
+                <h3 style="font-size: 14px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 20px; opacity: 0.8;">Zalora Wallet</h3>
+                <div style="font-size: 48px; font-weight: 800; font-family: 'Montserrat', sans-serif; margin-bottom: 30px;">
+                    $<?= number_format($cust_data['Cust_Balance'] ?? 0, 2) ?>
+                </div>
+                
+                <div style="display: flex; gap: 15px; align-items: center;">
+                    <form method="POST" action="profile.php" style="display: flex; gap: 10px; align-items: center;">
+                        <input type="hidden" name="action" value="topup_wallet">
+                        <span style="font-weight: 700; font-size: 14px;">$</span>
+                        <input type="number" name="amount" min="1" step="0.01" required placeholder="0.00" style="padding: 10px; border: none; border-radius: 4px; width: 100px; font-weight: 700;">
+                        <button type="submit" style="background: #fff; color: #000; border: none; padding: 12px 30px; font-weight: 700; font-size: 12px; cursor: pointer; text-transform: uppercase; border-radius: 4px; transition: 0.3s; hover: opacity: 0.9;">Top Up</button>
+                    </form>
+                    <button style="background: transparent; color: #fff; border: 1px solid rgba(255,255,255,0.5); padding: 12px 30px; font-weight: 700; font-size: 12px; cursor: pointer; text-transform: uppercase; border-radius: 4px; transition: 0.3s;">View History</button>
+                </div>
+            </div>
+            
+            <div class="profile-card" style="margin-top: 30px;">
+                <h3 style="font-size: 14px; font-weight: 700; text-transform: uppercase; margin-bottom: 20px;">Recent Transactions</h3>
+                <div style="text-align: center; padding: 40px 0; color: #999; font-size: 14px;">
+                    <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="margin-bottom: 15px; opacity: 0.5;"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                    <p>No recent wallet transactions found.</p>
+                </div>
+            </div>
+
+        <?php elseif ($active_tab === 'orders'): ?>
             <!-- Orders & Tracking List -->
             <div class="profile-card">
                 <div class="card-header">
@@ -643,7 +295,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 </div>
 
                 <?php
-                $orders = $database->getReference('ORDERS')->orderByChild('Cust_Id')->equalTo($customer_id)->getSnapshot()->getValue();
+                $orders1 = $database->getReference('orders')->orderByChild('Cust_Id')->equalTo($customer_id)->getSnapshot()->getValue() ?: [];
+                $orders2 = $database->getReference('orders')->orderByChild('Cust_Id')->equalTo($customer_id)->getSnapshot()->getValue() ?: [];
+                $orders = array_merge($orders1, $orders2);
 
                 if ($orders):
                     // Sort by date descending
@@ -651,8 +305,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         return strtotime($b['Order_PlacedAt'] ?? 0) - strtotime($a['Order_PlacedAt'] ?? 0);
                     });
                     
-                    $allItemSnapshot = $database->getReference('ORDER_ITEM')->getSnapshot()->getValue();
-                    $allItems = $allItemSnapshot ?: [];
+                    $allItemSnapshot1 = $database->getReference('order_item')->getSnapshot()->getValue() ?: [];
+                    $allItemSnapshot2 = $database->getReference('order_item')->getSnapshot()->getValue() ?: [];
+                    $allItems = array_merge($allItemSnapshot1, $allItemSnapshot2);
 
                     foreach ($orders as $ord):
                         $ord_id = $ord['Order_Id'];

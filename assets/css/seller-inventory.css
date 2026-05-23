@@ -1,0 +1,8 @@
+.search-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+        .search-box { position: relative; width: 300px; }
+        .search-box input { width: 100%; padding: 10px 10px 10px 40px; border: 1px solid #eee; font-size: 13px; outline: none; }
+        .search-box svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #999; }
+        
+        .filter-tabs { display: flex; gap: 1px; background: #eee; border: 1px solid #eee; }
+        .filter-tabs button { background: #fff; border: none; padding: 10px 20px; font-size: 11px; font-weight: 700; color: #666; cursor: pointer; text-transform: uppercase; }
+        .filter-tabs button.active { background: #000; color: #fff; }

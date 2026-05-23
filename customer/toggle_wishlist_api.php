@@ -19,13 +19,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // 1. Get or Create Wishlist for the user
-    $wishRef = $database->getReference('WISHLIST')->orderByChild('Cust_Id')->equalTo($cust_id)->getSnapshot()->getValue();
+    $wishRef = $database->getReference('wishlist')->orderByChild('Cust_Id')->equalTo($cust_id)->getSnapshot()->getValue();
     $wish_id = null;
     
     if ($wishRef) {
         $wish_id = key($wishRef);
     } else {
-        $newWishRef = $database->getReference('WISHLIST')->push();
+        $newWishRef = $database->getReference('wishlist')->push();
         $wish_id = $newWishRef->getKey();
         $newWishRef->set([
             'Wish_Id' => $wish_id,
@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // 2. Toggle Wishlist Item
-    $itemsRef = $database->getReference('WISHLIST_ITEM')->orderByChild('Wish_Id')->equalTo($wish_id)->getSnapshot()->getValue();
+    $itemsRef = $database->getReference('wishlist_item')->orderByChild('Wish_Id')->equalTo($wish_id)->getSnapshot()->getValue();
     $existing_item_key = null;
     
     if ($itemsRef) {
@@ -49,11 +49,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($existing_item_key) {
         // Remove from wishlist
-        $database->getReference('WISHLIST_ITEM')->getChild($existing_item_key)->remove();
+        $database->getReference('wishlist_item')->getChild($existing_item_key)->remove();
         echo json_encode(["status" => "success", "action" => "removed"]);
     } else {
         // Add to wishlist
-        $newItemRef = $database->getReference('WISHLIST_ITEM')->push();
+        $newItemRef = $database->getReference('wishlist_item')->push();
         $newItemRef->set([
             'WItm_Id' => $newItemRef->getKey(),
             'Wish_Id' => $wish_id,

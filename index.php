@@ -4,13 +4,31 @@ require_once 'config/db.php';
 include 'customer/nav_counts.php';
 
 // Fetch Featured Products for "Steals You Can't Miss"
-$prod_query = "SELECT p.*, pi.PImg_ImgUrl, b.Brand_Name 
-               FROM product p
-               LEFT JOIN product_image pi ON p.Prod_Id = pi.Prod_Id AND pi.PImg_IsPrimary = 1
-               LEFT JOIN brand b ON p.Brand_Id = b.Brand_Id
-               WHERE p.Prod_IsActive = 1
-               LIMIT 8";
-$products = $conn->query($prod_query);
+$db = $database->getReference();
+$allProducts = $db->getChild("product")->getSnapshot()->getValue() ?: [];
+$allBrands = $db->getChild("brand")->getSnapshot()->getValue() ?: [];
+$allImages = $db->getChild("product_image")->getSnapshot()->getValue() ?: [];
+$brandIndex = [];
+foreach ($allBrands as $b) {
+    if (isset($b['Brand_Id'])) $brandIndex[$b['Brand_Id']] = $b['Brand_Name'] ?? '';
+}
+
+$imgIndex = [];
+foreach ($allImages as $i) {
+    if (!isset($imgIndex[$i['Prod_Id'] ?? '']) || ($i['PImg_IsPrimary'] ?? 0) == 1) {
+        $imgIndex[$i['Prod_Id'] ?? ''] = $i['PImg_ImgUrl'] ?? '';
+    }
+}
+
+$products = [];
+foreach ($allProducts as $p) {
+    if (($p['Prod_IsActive'] ?? 0) == 1) {
+        $p['Brand_Name'] = $brandIndex[$p['Brand_Id'] ?? ''] ?? 'Unknown Brand';
+        $p['PImg_ImgUrl'] = $imgIndex[$p['Prod_Id'] ?? ''] ?? '';
+        $products[] = $p;
+        if (count($products) >= 8) break;
+    }
+}
 
 ?>
 <!DOCTYPE html>
@@ -22,45 +40,6 @@ $products = $conn->query($prod_query);
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&family=Cormorant+Garamond:ital,wght@1,600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./assets/css/index.css?v=<?= time() ?>">
     <link rel="stylesheet" href="./assets/css/global.css?v=<?= time() ?>">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Montserrat', sans-serif; background: #fff; color: #000; overflow-x: hidden; }
-        .top-promo-bar { background: #fff; border-bottom: 1px solid #eee; padding: 10px 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
-        .promo-container { max-width: 1400px; margin: 0 auto; display: flex; justify-content: space-around; }
-        .promo-item { color: #000; text-decoration: none; display: flex; align-items: center; gap: 8px; }
-        header { background: #fff; position: sticky; top: 0; z-index: 1000; border-bottom: 1px solid #eee; }
-        .main-header { max-width: 1400px; margin: 0 auto; padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; }
-        .logo { font-size: 24px; font-weight: 400; letter-spacing: 0.3em; text-decoration: none; color: #000; }
-        .search-bar-wrap { flex: 1; max-width: 500px; margin: 0 40px; position: relative; }
-        .search-input { width: 100%; padding: 12px 25px; border: 1px solid #ddd; border-radius: 100px; font-size: 13px; background: #f5f5f5; outline: none; }
-        .search-icon-btn { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); background: #000; color: #fff; border: none; width: 34px; height: 34px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-        .header-actions { display: flex; gap: 20px; }
-        .header-action-item { color: #000; text-decoration: none; font-size: 13px; display: flex; align-items: center; gap: 5px; }
-        .nav-bar { border-bottom: 1px solid #eee; }
-        .nav-container { max-width: 1400px; margin: 0 auto; display: flex; justify-content: center; gap: 40px; padding: 15px 0; }
-        .nav-item { font-size: 11px; font-weight: 700; text-transform: uppercase; text-decoration: none; color: #000; letter-spacing: 0.1em; }
-        .brand-icons-section { max-width: 1200px; margin: 40px auto; display: flex; justify-content: space-between; padding: 0 20px; }
-        .brand-icon-item { text-align: center; text-decoration: none; color: #000; width: 100px; }
-        .brand-circle { width: 70px; height: 70px; border-radius: 50%; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; transition: 0.3s; }
-        .brand-promo-text { font-size: 10px; font-weight: 700; text-transform: uppercase; }
-        .main-hero { max-width: 1400px; margin: 0 auto 60px; padding: 0 20px; }
-        .hero-card { display: flex; background: #8b9d77; min-height: 500px; }
-        .hero-image-side, .hero-text-side { flex: 1; }
-        .hero-image-side img { width: 100%; height: 100%; object-fit: cover; }
-        .hero-text-side { padding: 80px; color: #fff; display: flex; flex-direction: column; justify-content: center; }
-        .hero-brand { font-family: 'Cormorant Garamond', serif; font-size: 80px; font-style: italic; line-height: 1; margin: 10px 0 20px; }
-        .btn-hero-shop { border: 2px solid #fff; padding: 12px 30px; color: #fff; text-decoration: none; font-weight: 700; width: fit-content; }
-        .brand-deals-grid { max-width: 1200px; margin: 0 auto 60px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 0 20px; }
-        .deal-card { position: relative; aspect-ratio: 3/4; overflow: hidden; }
-        .deal-card img { width: 100%; height: 100%; object-fit: cover; }
-        .deal-overlay { position: absolute; bottom: 0; left: 0; right: 0; padding: 20px; background: linear-gradient(transparent, rgba(0,0,0,0.8)); color: #fff; }
-        .product-carousel-wrap { max-width: 1400px; margin: 0 auto 80px; padding: 0 20px; }
-        .carousel-scroll { display: flex; gap: 20px; overflow-x: auto; padding-bottom: 20px; }
-        .product-card-premium { flex: 0 0 250px; }
-        .prod-img-box { aspect-ratio: 3/4; margin-bottom: 10px; }
-        .prod-img-box img { width: 100%; height: 100%; object-fit: cover; }
-        .btn-add-bag-slim { width: 100%; padding: 10px; border: 1px solid #000; background: #fff; font-weight: 700; cursor: pointer; text-transform: uppercase; font-size: 11px; }
-    </style>
 </head>
 <body>
 
@@ -195,8 +174,8 @@ $products = $conn->query($prod_query);
         <h2 class="section-title-main">Steals You Can't Miss</h2>
     </div>
     <div class="carousel-scroll">
-        <?php if ($products->num_rows > 0): ?>
-            <?php while($p = $products->fetch_assoc()): ?>
+        <?php if (count($products) > 0): ?>
+            <?php foreach($products as $p): ?>
             <div class="product-card-premium">
                 <div class="prod-img-box">
                     <img src="<?= $p['PImg_ImgUrl'] ? $p['PImg_ImgUrl'] : 'https://via.placeholder.com/300x400' ?>" alt="<?= htmlspecialchars($p['Prod_Name']) ?>">
@@ -218,7 +197,7 @@ $products = $conn->query($prod_query);
                     </form>
                 </div>
             </div>
-            <?php endwhile; ?>
+            <?php endforeach; ?>
         <?php endif; ?>
     </div>
 </section>

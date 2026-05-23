@@ -11,64 +11,111 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'seller') {
 $seller_id = $_SESSION['user_id'];
 $seller_name = $_SESSION['user_name'] ?? 'Seller';
 
-// 1. Fetch Low Stock Items (Critical < 5)
-$low_stock_query = "SELECT p.Prod_Id, p.Prod_Name, 
-                    (SELECT SUM(PVar_StockQuantity) FROM product_variant WHERE Prod_Id = p.Prod_Id) as total_stock
-                    FROM product p 
-                    WHERE p.Sell_Id = ? 
-                    HAVING total_stock < 5";
-$stmt_low = $conn->prepare($low_stock_query);
-$stmt_low->bind_param("i", $seller_id);
-$stmt_low->execute();
-$low_stock_res = $stmt_low->get_result();
-$low_stock_count = $low_stock_res->num_rows;
+// Fetch data from Firebase
+$productsRef = $database->getReference('product')->orderByChild('Sell_Id')->equalTo($seller_id)->getSnapshot()->getValue() ?: [];
+$variantsRef = $database->getReference('product_variant')->getSnapshot()->getValue() ?: [];
+$imagesRef = $database->getReference('product_image')->getSnapshot()->getValue() ?: [];
 
-// 2. Total Products Count
-$stmt_count = $conn->prepare("SELECT COUNT(*) as count FROM product WHERE Sell_Id = ?");
-$stmt_count->bind_param("i", $seller_id);
-$stmt_count->execute();
-$total_products = $stmt_count->get_result()->fetch_assoc()['count'];
+// Get all orders and order_items to compute metrics
+$ordersRef = $database->getReference('orders')->getSnapshot()->getValue() ?: [];
+$orderItemsRef = $database->getReference('order_item')->getSnapshot()->getValue() ?: [];
 
-// 3. Real Metrics (Revenue and Orders)
-$metric_query = "SELECT SUM(oi.OdItm_Subtotal) as total_revenue, COUNT(DISTINCT oi.Order_Id) as total_orders
-                 FROM order_item oi 
-                 JOIN product_variant pv ON oi.PVar_Id = pv.PVar_Id 
-                 JOIN product p ON pv.Prod_Id = p.Prod_Id
-                 JOIN orders o ON oi.Order_Id = o.Order_Id
-                 WHERE p.Sell_Id = ? AND o.Order_Status != 'CANCELLED'";
-$stmt_metric = $conn->prepare($metric_query);
-$stmt_metric->bind_param("i", $seller_id);
-$stmt_metric->execute();
-$metrics = $stmt_metric->get_result()->fetch_assoc();
-$total_revenue = $metrics['total_revenue'] ?? 0;
-$active_orders = $metrics['total_orders'] ?? 0;
+// 1. Total Products Count
+$total_products = count($productsRef);
+
+// 2. Compute stock per product and Low Stock Items
+$low_stock_count = 0;
+$product_stats = [];
+
+foreach ($productsRef as $pid => $p) {
+    $stock = 0;
+    foreach ($variantsRef as $vid => $v) {
+        if (($v['Prod_Id'] ?? '') == ($p['Prod_Id'] ?? '')) {
+            $stock += (int)($v['PVar_StockQuantity'] ?? 0);
+        }
+    }
+    if ($stock < 5) {
+        $low_stock_count++;
+    }
+    
+    // Find primary image
+    $img = 'https://via.placeholder.com/50';
+    foreach ($imagesRef as $imgId => $pi) {
+        if (($pi['Prod_Id'] ?? '') == ($p['Prod_Id'] ?? '') && ($pi['PImg_IsPrimary'] ?? 0) == 1) {
+            $img = $pi['PImg_ImgUrl'] ?? '';
+            break;
+        }
+    }
+    
+    $product_stats[$p['Prod_Id'] ?? $pid] = [
+        'id' => $p['Prod_Id'] ?? $pid,
+        'name' => $p['Prod_Name'] ?? '',
+        'stock' => $stock,
+        'img' => $img,
+        'sales' => 0,
+        'revenue' => 0
+    ];
+}
+
+// 3. Real Metrics (Revenue, Orders, Sales)
+$total_revenue = 0;
+$active_orders = 0;
+$recent_activity = [];
+$active_order_ids = [];
+
+foreach ($ordersRef as $oid => $o) {
+    if (($o['Order_Status'] ?? '') != 'CANCELLED') {
+        $is_seller_order = false;
+        
+        foreach ($orderItemsRef as $oi_id => $oi) {
+            if (($oi['Order_Id'] ?? '') == ($o['Order_Id'] ?? '')) {
+                // Find which product this item belongs to
+                $pvar_id = $oi['PVar_Id'] ?? '';
+                $prod_id = null;
+                foreach ($variantsRef as $vid => $v) {
+                    if (($v['PVar_Id'] ?? '') == $pvar_id) {
+                        $prod_id = $v['Prod_Id'] ?? '';
+                        break;
+                    }
+                }
+                
+                if ($prod_id && isset($product_stats[$prod_id])) {
+                    $is_seller_order = true;
+                    $qty = (int)($oi['OdItm_Quantity'] ?? 0);
+                    $subtotal = (float)($oi['OdItm_Subtotal'] ?? 0);
+                    
+                    $product_stats[$prod_id]['sales'] += $qty;
+                    $product_stats[$prod_id]['revenue'] += $subtotal;
+                    
+                    $total_revenue += $subtotal;
+                    
+                    // Add to recent activity
+                    $recent_activity[] = [
+                        'prod_name' => $product_stats[$prod_id]['name'],
+                        'qty' => $qty,
+                        'placed_at' => $o['Order_PlacedAt'] ?? date('Y-m-d H:i:s')
+                    ];
+                }
+            }
+        }
+        
+        if ($is_seller_order) {
+            $active_orders++;
+        }
+    }
+}
 
 // 4. Top Selling Products
-$query_top = "SELECT p.*, 
-              (SELECT PImg_ImgUrl FROM PRODUCT_IMAGE WHERE Prod_Id = p.Prod_Id AND PImg_IsPrimary = 1 LIMIT 1) as img,
-              (SELECT SUM(PVar_StockQuantity) FROM product_variant WHERE Prod_Id = p.Prod_Id) as total_stock,
-              IFNULL((SELECT SUM(oi.OdItm_Quantity) FROM order_item oi JOIN product_variant pv ON oi.PVar_Id = pv.PVar_Id WHERE pv.Prod_Id = p.Prod_Id), 0) as total_sales,
-              IFNULL((SELECT SUM(oi.OdItm_Subtotal) FROM order_item oi JOIN product_variant pv ON oi.PVar_Id = pv.PVar_Id WHERE pv.Prod_Id = p.Prod_Id), 0) as total_revenue
-              FROM product p 
-              WHERE p.Sell_Id = ? 
-              ORDER BY total_sales DESC LIMIT 5";
-$stmt_top = $conn->prepare($query_top);
-$stmt_top->bind_param("i", $seller_id);
-$stmt_top->execute();
-$recent_products = $stmt_top->get_result();
+usort($product_stats, function($a, $b) {
+    return $b['sales'] <=> $a['sales'];
+});
+$recent_products = array_slice($product_stats, 0, 5);
 
-// 5. Recent Activity (Latest 3 sales)
-$activity_query = "SELECT oi.*, p.Prod_Name, o.Order_PlacedAt 
-                   FROM order_item oi 
-                   JOIN product_variant pv ON oi.PVar_Id = pv.PVar_Id 
-                   JOIN product p ON pv.Prod_Id = p.Prod_Id 
-                   JOIN orders o ON oi.Order_Id = o.Order_Id
-                   WHERE p.Sell_Id = ? 
-                   ORDER BY o.Order_PlacedAt DESC LIMIT 3";
-$stmt_act = $conn->prepare($activity_query);
-$stmt_act->bind_param("i", $seller_id);
-$stmt_act->execute();
-$recent_activity = $stmt_act->get_result();
+// 5. Recent Activity Sort
+usort($recent_activity, function($a, $b) {
+    return strtotime($b['placed_at']) <=> strtotime($a['placed_at']);
+});
+$recent_activity = array_slice($recent_activity, 0, 3);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -198,8 +245,8 @@ $recent_activity = $stmt_act->get_result();
                             </tr>
                         </thead>
                         <tbody>
-                            <?php while($p = $recent_products->fetch_assoc()): 
-                                $stock = $p['total_stock'] ?? 0;
+                            <?php foreach($recent_products as $p): 
+                                $stock = $p['stock'];
                                 $status_tag = $stock <= 0 ? 'OUT OF STOCK' : ($stock < 10 ? 'LOW STOCK' : 'IN STOCK');
                                 $status_class = $stock <= 0 ? 'out' : ($stock < 10 ? 'low' : 'active');
                                 
@@ -211,17 +258,17 @@ $recent_activity = $stmt_act->get_result();
                             <tr>
                                 <td>
                                     <div class="prod-details">
-                                        <img src="<?= $img_path ?>" class="prod-thumb">
+                                        <img src="<?= htmlspecialchars($img_path) ?>" class="prod-thumb">
                                         <div class="prod-info">
-                                            <h4><?= htmlspecialchars($p['Prod_Name']) ?></h4>
+                                            <h4><?= htmlspecialchars($p['name']) ?></h4>
                                         </div>
                                     </div>
                                 </td>
                                 <td><span class="status-tag <?= $status_class ?>"><?= $status_tag ?></span></td>
-                                <td style="font-weight:600;"><?= number_format($p['total_sales']) ?></td>
-                                <td style="font-weight:700;">$<?= number_format($p['total_revenue'], 2) ?></td>
+                                <td style="font-weight:600;"><?= number_format($p['sales']) ?></td>
+                                <td style="font-weight:700;">$<?= number_format($p['revenue'], 2) ?></td>
                             </tr>
-                            <?php endwhile; ?>
+                            <?php endforeach; ?>
                         </tbody>
                     </table>
                 </div>
@@ -232,9 +279,9 @@ $recent_activity = $stmt_act->get_result();
                 <div class="content-card">
                     <h3 class="card-title" style="margin-bottom: 1.5rem;">RECENT ACTIVITY</h3>
                     <div style="display:flex; flex-direction:column; gap:20px;">
-                        <?php if ($recent_activity->num_rows > 0): ?>
-                            <?php while($act = $recent_activity->fetch_assoc()): 
-                                $time_ago = floor((time() - strtotime($act['Order_PlacedAt'])) / 60);
+                        <?php if (!empty($recent_activity)): ?>
+                            <?php foreach($recent_activity as $act): 
+                                $time_ago = floor((time() - strtotime($act['placed_at'])) / 60);
                                 $time_str = $time_ago < 60 ? "$time_ago MINUTES AGO" : floor($time_ago/60) . " HOURS AGO";
                             ?>
                             <div style="display:flex; gap:15px;">
@@ -242,11 +289,11 @@ $recent_activity = $stmt_act->get_result();
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"></path><path d="M3 6h18"></path><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
                                 </div>
                                 <div>
-                                    <p style="font-size:12px; margin:0;">New sale: "<?= htmlspecialchars($act['Prod_Name']) ?>" (x<?= $act['OdItm_Quantity'] ?>)</p>
+                                    <p style="font-size:12px; margin:0;">New sale: "<?= htmlspecialchars($act['prod_name']) ?>" (x<?= $act['qty'] ?>)</p>
                                     <p style="font-size:10px; color:#999; margin:4px 0;"><?= strtoupper($time_str) ?></p>
                                 </div>
                             </div>
-                            <?php endwhile; ?>
+                            <?php endforeach; ?>
                         <?php else: ?>
                             <p style="font-size: 11px; color: #999; font-style: italic;">No recent sales activity yet.</p>
                         <?php endif; ?>

@@ -1,5 +1,7 @@
 # Database Evolution Report
 
+> **Note:** The application now uses **Firebase Realtime Database** as its sole data store. MySQL (`malalay_zalora`) is no longer required at runtime. Legacy schema notes below remain for reference.
+
 This document summarizes the strategic additions and enhancements made to the Zalora ecosystem's database schema to support professional logistics, trust moderation, and seller management.
 
 ## 1. Entirely New/Strategically Rebuilt Tables

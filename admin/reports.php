@@ -9,9 +9,22 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
 }
 
 // Fetch some quick stats
-$total_sales = $conn->query("SELECT SUM(Order_TotalAmnt) as total FROM ORDERS WHERE Order_Status != 'CANCELLED'")->fetch_assoc()['total'];
-$total_orders = $conn->query("SELECT COUNT(*) as count FROM ORDERS")->fetch_assoc()['count'];
-$total_customers = $conn->query("SELECT COUNT(*) as count FROM customer")->fetch_assoc()['count'];
+$all_orders_raw = array_merge(
+    $database->getReference('orders')->getSnapshot()->getValue() ?: [],
+    $database->getReference('orders')->getSnapshot()->getValue() ?: []
+);
+
+$total_sales = array_sum(array_map(
+    fn($o) => ($o['Order_Status'] ?? '') !== 'CANCELLED' ? floatval($o['Order_TotalAmnt'] ?? 0) : 0,
+    $all_orders_raw
+));
+$total_orders = count($all_orders_raw);
+
+$all_customers_raw = array_merge(
+    $database->getReference('customer')->getSnapshot()->getValue() ?: [],
+    $database->getReference('customer')->getSnapshot()->getValue() ?: []
+);
+$total_customers = count($all_customers_raw);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -20,20 +33,7 @@ $total_customers = $conn->query("SELECT COUNT(*) as count FROM customer")->fetch
     <title>Admin - Reports & Analytics</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/admin.css">
-    <style>
-        .reports-container { padding: 40px; }
-        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 40px; }
-        .stat-card { background: #fff; padding: 30px; border: 1px solid #eee; }
-        .stat-label { font-size: 10px; font-weight: 800; color: #999; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px; display: block; }
-        .stat-value { font-size: 24px; font-weight: 700; }
-        
-        .export-section { background: #fff; border: 1px solid #eee; padding: 40px; }
-        .export-row { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; border-bottom: 1px solid #f9f9f9; }
-        .export-row:last-child { border-bottom: none; }
-        .export-info h3 { font-size: 15px; margin-bottom: 5px; }
-        .export-info p { font-size: 12px; color: #666; }
-        .btn-export { background: #000; color: #fff; border: none; padding: 12px 25px; font-size: 10px; font-weight: 700; text-transform: uppercase; cursor: pointer; text-decoration: none; }
-    </style>
+    <link rel="stylesheet" href="../assets/css/admin-reports.css?v=<?= time() ?>">
 </head>
 <body class="admin-body">
     <div class="admin-layout">

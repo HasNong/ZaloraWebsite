@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         exit;
     }
 
-    $customersRef = $database->getReference('CUSTOMER');
+    $customersRef = $database->getReference('customer');
 
     // Check if email exists
     $existing = $customersRef->orderByChild('Cust_Email')->equalTo($email)->getSnapshot();
@@ -46,7 +46,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     ];
     
     try {
-        $customersRef->push($newCustomer);
+        $newRef = $customersRef->push();
+        $newCustomer['Cust_Id'] = $newRef->getKey();
+        $newRef->set($newCustomer);
         $_SESSION['success'] = "Registration successful. Please log in.";
         header("Location: login.php?tab=login");
     } catch (\Exception $e) {
