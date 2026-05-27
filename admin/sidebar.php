@@ -2,7 +2,7 @@
     <div class="sidebar-logo">ZALORA ADMIN</div>
     <ul class="nav-list">
         <li><a href="dashboard.php" class="<?= basename($_SERVER['PHP_SELF']) == 'dashboard.php' ? 'active' : '' ?>">Dashboard</a></li>
-        <li><a href="users.php" class="<?= basename($_SERVER['PHP_SELF']) == 'users.php' ? 'active' : '' ?>">Seller Management</a></li>
+        <li><a href="users.php" class="<?= basename($_SERVER['PHP_SELF']) == 'users.php' ? 'active' : '' ?>">Users Management</a></li>
         <li><a href="applications.php" class="<?= basename($_SERVER['PHP_SELF']) == 'applications.php' ? 'active' : '' ?>">Role Applications</a></li>
         <li><a href="drivers.php" class="<?= basename($_SERVER['PHP_SELF']) == 'drivers.php' ? 'active' : '' ?>">Driver Management</a></li>
         <li><a href="catalog.php" class="<?= basename($_SERVER['PHP_SELF']) == 'catalog.php' ? 'active' : '' ?>">Catalog Management</a></li>

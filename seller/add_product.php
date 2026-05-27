@@ -63,35 +63,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Handle Image Upload
         if (!empty($image_base64)) {
-            $upload_dir = '../assets/uploads/products/';
-            if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
-
-            // Handle both "data:image/png;base64,..." and raw base64
-            if (strpos($image_base64, 'base64,') !== false) {
-                $image_parts = explode("base64,", $image_base64);
-                $image_base64_decoded = base64_decode($image_parts[1]);
-                $image_type_aux = explode("image/", $image_parts[0]);
-                $image_type = trim($image_type_aux[1] ?? 'png', '; ');
-            } else {
-                $image_base64_decoded = base64_decode($image_base64);
-                $image_type = 'png';
+            // Standardize base64 string to be a data URL if it isn't already
+            if (strpos($image_base64, 'data:image/') === false) {
+                $image_base64 = 'data:image/png;base64,' . $image_base64;
             }
-            
-            if ($image_base64_decoded) {
-                $file_name = 'prod_' . substr(md5($prod_id), 0, 8) . '_' . time() . '.' . $image_type;
-                $file_path = $upload_dir . $file_name;
-                $db_save_path = 'assets/uploads/products/' . $file_name;
-                
-                if (file_put_contents($file_path, $image_base64_decoded)) {
-                    $newImgRef = $database->getReference('product_image')->push();
-                    $newImgRef->set([
-                        'PImg_Id' => $newImgRef->getKey(),
-                        'Prod_Id' => $prod_id,
-                        'PImg_ImgUrl' => $db_save_path,
-                        'PImg_IsPrimary' => 1
-                    ]);
-                }
-            }
+            $newImgRef = $database->getReference('product_image')->push();
+            $newImgRef->set([
+                'PImg_Id' => $newImgRef->getKey(),
+                'Prod_Id' => $prod_id,
+                'PImg_ImgUrl' => $image_base64,
+                'PImg_IsPrimary' => 1
+            ]);
         }
 
         // LOOP THROUGH VARIANTS and save each one
@@ -123,14 +105,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        // Success Redirect
-        $_SESSION['success_msg'] = "Product '$name' has been successfully submitted and is pending admin approval!";
-        header("Location: inventory.php");
-        exit;
-    } else {
-        $msg = "Please ensure all required fields (*) are filled correctly.";
+            // Success Redirect
+            $_SESSION['success_msg'] = "Product '$name' has been successfully submitted and is pending admin approval!";
+            header("Location: inventory.php");
+            exit;
+        } else {
+            $msg = "Please ensure all required fields (*) are filled correctly.";
+        }
     }
-}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -140,7 +122,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Seller Center - Add Product</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../assets/css/seller.css">
-    <link rel="stylesheet" href="../assets/css/seller-product-form.css?v=<?= time() ?>">
+    <style>
+        .form-card { 
+            background: var(--white); 
+            padding: 2.5rem; 
+            border: 1px solid var(--border); 
+            max-width: 900px; 
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+            transition: var(--transition);
+        }
+        .form-card:hover {
+            box-shadow: var(--shadow-md);
+        }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem; }
+        .form-group { margin-bottom: 1.5rem; }
+        .form-group label { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; color: var(--text-light); margin-bottom: 8px; text-transform: uppercase; }
+        .form-group input, .form-group select, .form-group textarea { 
+            width: 100%; 
+            padding: 12px; 
+            border: 1px solid var(--border); 
+            font-family: inherit; 
+            font-size: 13px; 
+            outline: none; 
+            transition: var(--transition); 
+            box-sizing: border-box;
+            border-radius: var(--radius-sm);
+        }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--black); }
+        
+        /* Dropzone */
+        .upload-zone {
+            width: 100%;
+            height: 200px;
+            border: 2px dashed var(--border);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+            background: var(--background);
+            border-radius: var(--radius-sm);
+        }
+        .upload-zone:hover { border-color: var(--black); background: rgba(0,0,0,0.02); }
+        .upload-zone.has-image { border-style: solid; border-color: var(--border); }
+        .upload-zone img { width: 100%; height: 100%; object-fit: contain; }
+        .upload-zone p { font-size: 11px; font-weight: 700; color: var(--text-light); margin-top: 10px; }
+        
+        .alert { 
+            padding: 15px; 
+            margin-bottom: 2rem; 
+            font-size: 12px; 
+            font-weight: 600; 
+            border-radius: var(--radius-sm);
+            background: var(--accent-red-bg); 
+            color: var(--accent-red-text);
+            border: 1px solid rgba(0,0,0,0.02); 
+        }
+    </style>
 </head>
 <body>
 

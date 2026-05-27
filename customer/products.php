@@ -73,7 +73,7 @@ foreach ($allProducts as $p) {
     }
 
     $imgUrl = $primaryImg ?: "https://via.placeholder.com/600x800?text=No+Image";
-    if (!empty($primaryImg) && strpos($primaryImg, 'http') === false) {
+    if (!empty($primaryImg) && strpos($primaryImg, 'http') === false && strpos($primaryImg, 'data:') === false) {
         $imgUrl = '../' . $primaryImg;
     }
 

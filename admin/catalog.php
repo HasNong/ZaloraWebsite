@@ -66,6 +66,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rview_id'])) {
     exit;
 }
 
+function resolve_img_url($url) {
+    if (!$url) return '../assets/images/placeholder.jpg';
+    if (strpos($url, 'data:') === 0 || strpos($url, 'http') === 0) {
+        return $url;
+    }
+    return '../' . $url;
+}
+
 // Fetch Data from Firebase
 $db = $database->getReference();
 $all_products = array_merge(
@@ -163,7 +171,7 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'pending';
                     <div class="grid">
                         <?php foreach($pending_prod as $p): ?>
                             <div class="card">
-                                <img src="../<?= htmlspecialchars($p['img'] ?? 'assets/images/placeholder.jpg') ?>" class="card-img">
+                                <img src="<?= htmlspecialchars(resolve_img_url($p['img'] ?? '')) ?>" class="card-img">
                                 <div class="card-info">
                                     <div class="card-brand"><?= htmlspecialchars($p['Brand_Name']) ?></div>
                                     <div class="card-name"><?= htmlspecialchars($p['Prod_Name']) ?></div>
@@ -187,7 +195,7 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'pending';
                     <div class="grid">
                         <?php foreach($active_prod as $p): ?>
                             <div class="card">
-                                <img src="../<?= htmlspecialchars($p['img'] ?? 'assets/images/placeholder.jpg') ?>" class="card-img">
+                                <img src="<?= htmlspecialchars(resolve_img_url($p['img'] ?? '')) ?>" class="card-img">
                                 <div class="card-info">
                                     <div class="card-brand"><?= htmlspecialchars($p['Brand_Name']) ?></div>
                                     <div class="card-name"><?= htmlspecialchars($p['Prod_Name']) ?></div>
@@ -210,7 +218,7 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'pending';
                     <div class="grid">
                         <?php foreach($rejected_prod as $p): ?>
                             <div class="card" style="opacity: 0.7;">
-                                <img src="../<?= htmlspecialchars($p['img'] ?? 'assets/images/placeholder.jpg') ?>" class="card-img">
+                                <img src="<?= htmlspecialchars(resolve_img_url($p['img'] ?? '')) ?>" class="card-img">
                                 <div class="card-info">
                                     <div class="card-brand"><?= htmlspecialchars($p['Brand_Name']) ?></div>
                                     <div class="card-name"><?= htmlspecialchars($p['Prod_Name']) ?></div>
@@ -239,7 +247,7 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'pending';
                                         <div style="font-size: 13px; font-weight: 700; margin-bottom: 5px;"><?= htmlspecialchars($r['Cust_Name']) ?> on <?= htmlspecialchars($r['Prod_Name']) ?></div>
                                         <p style="font-size: 13px; color: #444; line-height: 1.6;"><?= htmlspecialchars($r['Rview_Txt'] ?? '') ?></p>
                                         <?php if (!empty($r['Rview_PicUrl'])): ?>
-                                            <img src="../<?= htmlspecialchars($r['Rview_PicUrl']) ?>" style="width: 100px; height: 100px; object-fit: cover; margin-top: 15px; border: 1px solid #eee;" onclick="window.open(this.src)">
+                                            <img src="<?= htmlspecialchars(resolve_img_url($r['Rview_PicUrl'])) ?>" style="width: 100px; height: 100px; object-fit: cover; margin-top: 15px; border: 1px solid #eee;" onclick="window.open(this.src)">
                                         <?php endif; ?>
                                     </div>
                                     <div style="display:flex; flex-direction:column; gap: 10px; width: 150px;">

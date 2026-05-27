@@ -239,7 +239,7 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
         <h2 class="card-title">Order Items</h2>
         <?php foreach($items as $item): 
             $img = $item['img'] ?? 'https://via.placeholder.com/100';
-            if ($img && strpos($img, 'http') === false) $img = '../' . $img;
+            if ($img && strpos($img, 'http') === false && strpos($img, 'data:') === false) $img = '../' . $img;
             
             // Check if reviewed
             $rev_check = $database->getReference('review')->orderByChild('OdItm_Id')->equalTo($item['OdItm_Id'])->getSnapshot()->getValue();
@@ -308,11 +308,16 @@ $nav_links = ["WOMEN", "MEN", "KIDS", "LUXURY", "BEAUTY"];
         </div>
     </div>
 
-    <?php if (!empty($order['Ship_ProofImg'])): ?>
+    <?php if (!empty($order['Ship_ProofImg'])): 
+        $proof_img = $order['Ship_ProofImg'];
+        if (strpos($proof_img, 'http') === false && strpos($proof_img, 'data:') === false) {
+            $proof_img = '../' . $proof_img;
+        }
+    ?>
         <div class="card">
             <h2 class="card-title">Proof of Delivery</h2>
             <div style="text-align: center;">
-                <img src="../<?= htmlspecialchars($order['Ship_ProofImg']) ?>" style="max-width: 100%; border: 1px solid #eee;" alt="Delivery Proof">
+                <img src="<?= htmlspecialchars($proof_img) ?>" style="max-width: 100%; border: 1px solid #eee;" alt="Delivery Proof">
                 <p style="font-size: 11px; color: #999; margin-top: 10px; text-transform: uppercase; font-weight: 700;">Captured by driver upon handover</p>
             </div>
         </div>

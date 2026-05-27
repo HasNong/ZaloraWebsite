@@ -16,7 +16,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     if ($app_id) {
         // Fetch the application
-        $appRef = $database->getReference('role_application')->orderByChild('App_Id')->equalTo(intval($app_id))->getSnapshot()->getValue();
+        // Fetch the application manually since we don't have an index on App_Id
+        $all_apps_for_search = $database->getReference('role_application')->getSnapshot()->getValue() ?: [];
+        $appRef = [];
+        foreach ($all_apps_for_search as $key => $app_data) {
+            if (isset($app_data['App_Id']) && intval($app_data['App_Id']) === intval($app_id)) {
+                $appRef[$key] = $app_data;
+                break;
+            }
+        }
         if ($appRef) {
             $app_key = key($appRef);
             $app = current($appRef);
@@ -24,8 +32,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $app_type = $app['App_Type'];
             $details = json_decode($app['App_Details'], true);
 
-            // Fetch Customer Info
+            // Fetch Customer Info (try both int and string since Firebase equalTo is type-strict)
             $custRef = $database->getReference('customer')->orderByChild('Cust_Id')->equalTo(intval($cust_id))->getSnapshot()->getValue();
+            if (!$custRef) {
+                $custRef = $database->getReference('customer')->orderByChild('Cust_Id')->equalTo(strval($cust_id))->getSnapshot()->getValue();
+            }
             if ($custRef) {
                 $cust = current($custRef);
                 if ($action === 'approve') {

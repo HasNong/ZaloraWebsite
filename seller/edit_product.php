@@ -107,37 +107,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         if (!empty($image_base64)) {
-            $upload_dir = '../assets/uploads/products/';
-            if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
-
-            if (strpos($image_base64, 'base64,') !== false) {
-                $image_parts = explode("base64,", $image_base64);
-                $image_base64_decoded = base64_decode($image_parts[1]);
-                $image_type_aux = explode("image/", $image_parts[0]);
-                $image_type = trim($image_type_aux[1] ?? 'png', '; ');
-                
-                if ($image_base64_decoded) {
-                    $file_name = 'prod_' . substr(md5($prod_id), 0, 8) . '_' . time() . '.' . $image_type;
-                    $file_path = $upload_dir . $file_name;
-                    $db_save_path = 'assets/uploads/products/' . $file_name;
-                    
-                    if (file_put_contents($file_path, $image_base64_decoded)) {
-                        // Update or Insert image
-                        $oldImages = $database->getReference('product_image')->orderByChild('Prod_Id')->equalTo($prod_id)->getSnapshot()->getValue() ?: [];
-                        foreach ($oldImages as $imgId => $img) {
-                            $database->getReference("product_image/$imgId")->remove();
-                        }
-                        
-                        $newImgRef = $database->getReference('product_image')->push();
-                        $newImgRef->set([
-                            'PImg_Id' => $newImgRef->getKey(),
-                            'Prod_Id' => $prod_id,
-                            'PImg_ImgUrl' => $db_save_path,
-                            'PImg_IsPrimary' => 1
-                        ]);
-                    }
-                }
+            // Standardize base64 string to be a data URL if it isn't already
+            if (strpos($image_base64, 'data:image/') === false) {
+                $image_base64 = 'data:image/png;base64,' . $image_base64;
             }
+            // Update or Insert image
+            $oldImages = $database->getReference('product_image')->orderByChild('Prod_Id')->equalTo($prod_id)->getSnapshot()->getValue() ?: [];
+            foreach ($oldImages as $imgId => $img) {
+                $database->getReference("product_image/$imgId")->remove();
+            }
+            
+            $newImgRef = $database->getReference('product_image')->push();
+            $newImgRef->set([
+                'PImg_Id' => $newImgRef->getKey(),
+                'Prod_Id' => $prod_id,
+                'PImg_ImgUrl' => $image_base64,
+                'PImg_IsPrimary' => 1
+            ]);
         }
 
         $_SESSION['success_msg'] = "Product '$name' updated successfully!";

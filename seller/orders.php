@@ -37,9 +37,20 @@ $productsRef = $database->getReference('product')->orderByChild('Sell_Id')->equa
 $variantsRef = $database->getReference('product_variant')->getSnapshot()->getValue() ?: [];
 $orderItemsRef = $database->getReference('order_item')->getSnapshot()->getValue() ?: [];
 
+// Build a Prod_Id-keyed lookup of the seller's products
+// ($productsRef is keyed by Firebase push-keys, NOT by Prod_Id)
+$sellerProductIds = [];
+foreach ($productsRef as $pKey => $p) {
+    if (is_array($p) && isset($p['Prod_Id'])) {
+        $sellerProductIds[$p['Prod_Id']] = $p;
+    }
+}
+
 $variantToProductMap = [];
 foreach ($variantsRef as $vid => $v) {
-    if (isset($productsRef[$v['Prod_Id'] ?? ''])) {
+    if (!is_array($v)) continue;
+    $prod_id = $v['Prod_Id'] ?? '';
+    if (isset($sellerProductIds[$prod_id])) {
         $variantToProductMap[$v['PVar_Id'] ?? $vid] = $v;
     }
 }
@@ -174,7 +185,7 @@ foreach (array_keys($seller_order_ids) as $oid) {
 
         foreach ($orderItemMap[$oid] as $oi) {
             $var = $variantToProductMap[$oi['PVar_Id'] ?? ''] ?? [];
-            $prod = $productsRef[$var['Prod_Id'] ?? ''] ?? [];
+            $prod = $sellerProductIds[$var['Prod_Id'] ?? ''] ?? [];
             
             $img = 'https://via.placeholder.com/100';
             foreach ($imagesRef as $imgId => $pi) {

@@ -8,6 +8,14 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
+function resolve_img_url($url) {
+    if (!$url) return '../assets/images/placeholder.jpg';
+    if (strpos($url, 'data:') === 0 || strpos($url, 'http') === 0) {
+        return $url;
+    }
+    return '../' . $url;
+}
+
 // Handle Status Updates
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $rtrn_id = $_POST['rtrn_id'];
@@ -110,7 +118,7 @@ usort($returns, fn($a, $b) => strtotime($b['Rtrn_CreatedAt'] ?? 0) - strtotime($
                             <td style="max-width: 200px;"><?= htmlspecialchars($r['Rtrn_Reason']) ?></td>
                             <td>
                                 <?php if (!empty($r['Rtrn_PicEvidence'])): ?>
-                                    <img src="../<?= htmlspecialchars($r['Rtrn_PicEvidence']) ?>" class="evidence-img" onclick="window.open(this.src)">
+                                    <img src="<?= htmlspecialchars(resolve_img_url($r['Rtrn_PicEvidence'])) ?>" class="evidence-img" onclick="window.open(this.src)">
                                 <?php else: ?>
                                     <span style="color: #999; font-style: italic;">No Photo</span>
                                 <?php endif; ?>
